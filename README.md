@@ -16,6 +16,8 @@ the recovery is to raise the ceiling or switch provider and carry on.
              │ claims                       │
           FactChecker × N  (parallel)       │
              │ verdicts                     │
+          Reconciler                        │   do any two claims conflict?
+             │                              │
           Supervisor ───────────────────────┘
              │ write
           Writer ◄──────────┐
@@ -25,6 +27,23 @@ the recovery is to raise the ceiling or switch provider and carry on.
           Critic ───────────┘
              │ accept
           Report
+```
+
+There is a second, cheaper workflow for checking a single claim rather than
+researching a topic:
+
+```
+          Planner            frames the claim as three angles
+             │
+          Researcher × 3     for it, against it, around it  (parallel)
+             │
+          FactChecker        weighs all of it, rules with a confidence
+             │
+          Writer             explains the finding, cited
+```
+
+```bash
+python -m mas.cli run "Coffee reduces heart disease risk." --workflow claim_check
 ```
 
 ## What makes it a multi-agent system rather than a long prompt
@@ -46,6 +65,10 @@ the recovery is to raise the ceiling or switch provider and carry on.
 - **Verification removes claims rather than flagging them.** A claim that fails
   the Fact Checker never reaches the Writer. The finished report lists what was
   excluded and why.
+- **Contradiction is detected, not hoped for.** Vectors find which verified
+  claims are about the same thing, and the Fact Checker is asked about only
+  those pairs. Corroboration is counted in independent domains, in code. The
+  report names the disagreements it found.
 - **Runs are durable.** The queue, the blackboard and the spend are
   checkpointed after every step, so a run survives the process that started it.
 

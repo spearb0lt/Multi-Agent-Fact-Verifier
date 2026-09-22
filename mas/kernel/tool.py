@@ -350,6 +350,39 @@ def execute(
             ToolResult(call_id=call.call_id, name=call.name, ok=False, error=reason)
         )
 
+    # A tool whose effect outlasts the run needs permission when the operator
+    # has asked for it. Refusing here rather than parking the whole run is
+    # deliberate: an agent told no can carry on and finish, whereas pausing a
+    # parallel fan out to ask about one optional write would stall everything.
+    if tool_obj.side_effects and bool(ctx.option("approve_side_effects", False)):
+        answer = ctx.store.latest_answer(ctx.run_id, f"tool:{call.name}")
+        approved = bool(answer) and not str(answer.get("answer", "")).lower().startswith(
+            ("no", "deny", "reject")
+        )
+        if not approved:
+            ctx.store.request_approval(
+                ctx.run_id,
+                node=f"tool:{call.name}",
+                kind="tool",
+                question=(
+                    f"{agent or 'An agent'} wants to use '{call.name}', which changes "
+                    f"something outside this run. Allow it for the rest of the run?"
+                ),
+                options=["allow", "deny"],
+                payload={"tool": call.name, "arguments": call.arguments},
+            )
+            return finish(
+                ToolResult(
+                    call_id=call.call_id,
+                    name=call.name,
+                    ok=False,
+                    error=(
+                        f"'{call.name}' changes something outside this run and has not "
+                        f"been approved yet. Carry on without it."
+                    ),
+                )
+            )
+
     try:
         arguments = validate_arguments(tool_obj.spec, call.arguments)
     except ToolError as exc:

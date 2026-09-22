@@ -35,8 +35,9 @@ Absolute rules:
    writing something that is not in the claims, delete it.
 2. Every factual sentence ends with the source reference or references in
    square brackets, like [S3] or [S1][S7]. Use the references exactly as given.
-3. Where a claim is marked contested, report the disagreement and cite both
-   sides. Do not resolve it.
+3. Where two claims are listed as conflicting, report the disagreement in the
+   body and cite both sides. Do not pick one silently and do not average them.
+   If one is better supported, say so and say why.
 4. Where the claims do not settle something the brief asked about, say so
    plainly in the "What is not settled" section. Do not fill the gap.
 
@@ -91,6 +92,30 @@ conclusion". Do not include a sources list: it is added afterwards.
         themes = plan.get("themes") or ctx.board.mapping("analysis").get("themes") or []
         theme_note = f"\nThemes to organise around: {'; '.join(themes)}" if themes else ""
 
+        conflict_note = ""
+        conflicts = ctx.board.conflicts
+        if conflicts:
+            lines = []
+            for c in conflicts:
+                better = (
+                    f" The sources behind {c['better_supported']} are stronger: {c['why']}"
+                    if c.get("better_supported") in {"A", "B"}
+                    else " Neither is better supported."
+                )
+                a_refs = ", ".join(c.get("a_sources", []))
+                b_refs = ", ".join(c.get("b_sources", []))
+                lines.append(
+                    f"- {c['relation'].upper()} between {c['a']} and {c['b']}: "
+                    f"{c['explanation']}{better}\n"
+                    f"    {c['a']}: {c['a_text']} [{a_refs}]\n"
+                    f"    {c['b']}: {c['b_text']} [{b_refs}]"
+                )
+            conflict_note = (
+                "\n\nThe Fact Checker found these claims to be in conflict with each "
+                "other. Report each disagreement rather than choosing a side:\n"
+                + "\n".join(lines)
+            )
+
         rejected = ctx.board.rejected_claims()
         rejected_note = ""
         if rejected:
@@ -108,7 +133,7 @@ conclusion". Do not include a sources list: it is added afterwards.
             f"{claims_digest(claims, with_verdicts=True)}\n\n"
             f"The sources behind them, for wording and detail:\n"
             f"{evidence_digest(ctx, refs, chars=900)}"
-            f"{rejected_note}{critique_note}"
+            f"{conflict_note}{rejected_note}{critique_note}"
         )
 
     def draft(self, ctx: Any) -> dict[str, Any]:

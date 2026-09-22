@@ -13,6 +13,12 @@ import { useState } from "react";
 import type { Config } from "@/lib/api";
 import { api } from "@/lib/api";
 
+const CLAIM_EXAMPLES = [
+  "Drinking three cups of coffee a day reduces the risk of heart disease.",
+  "India overtook Japan to become the world's fourth largest economy in 2025.",
+  "Intermittent fasting preserves muscle mass better than continuous calorie restriction.",
+];
+
 const EXAMPLES = [
   "What did the RBI decide at its most recent monetary policy meeting, and why?",
   "What is the current evidence on semaglutide for weight loss in non diabetic adults?",
@@ -27,6 +33,7 @@ interface Props {
 export default function NewRun({ config, onStarted }: Props) {
   const router = useRouter();
   const [brief, setBrief] = useState("");
+  const [workflow, setWorkflow] = useState(config.workflows[0]?.name || "research_report");
   const [provider, setProvider] = useState(config.default.provider || "");
   const [model, setModel] = useState("");
   const [depth, setDepth] = useState<"quick" | "standard" | "deep">("standard");
@@ -56,6 +63,7 @@ export default function NewRun({ config, onStarted }: Props) {
     try {
       const created = await api.createRun({
         brief: brief.trim(),
+        workflow,
         provider: chosen?.id || "",
         model: model || undefined,
         depth,
@@ -94,19 +102,58 @@ export default function NewRun({ config, onStarted }: Props) {
     );
   }
 
+  const chosenWorkflow = config.workflows.find((w) => w.name === workflow) || config.workflows[0];
+  const isClaimCheck = workflow === "claim_check";
+  const examples = isClaimCheck ? CLAIM_EXAMPLES : EXAMPLES;
+
   return (
     <form onSubmit={submit} className="panel p-4 space-y-3">
+      {config.workflows.length > 1 && (
+        <div className="flex flex-wrap gap-1.5">
+          {config.workflows.map((w) => (
+            <button
+              key={w.name}
+              type="button"
+              className="chip"
+              style={{
+                cursor: "pointer",
+                color: w.name === workflow ? "var(--text)" : "var(--muted)",
+                borderColor: w.name === workflow ? "var(--accent)" : "var(--line)",
+                background: w.name === workflow ? "var(--accent-soft)" : "transparent",
+              }}
+              onClick={() => setWorkflow(w.name)}
+            >
+              {w.name === "claim_check" ? "Check one claim" : "Research a topic"}
+              <span style={{ color: "var(--faint)" }}>{w.nodes.length} agents</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       <div>
-        <label className="block text-[13px] font-medium mb-1">What should the team research?</label>
+        <label className="block text-[13px] font-medium mb-1">
+          {isClaimCheck
+            ? "What claim should the team check?"
+            : "What should the team research?"}
+        </label>
         <textarea
           className="field font-sans"
           rows={3}
-          placeholder="Ask for something specific and checkable."
+          placeholder={
+            isClaimCheck
+              ? "State the claim as a single sentence, the way someone asserted it."
+              : "Ask for something specific and checkable."
+          }
           value={brief}
           onChange={(e) => setBrief(e.target.value)}
         />
+        {chosenWorkflow && (
+          <p className="mt-1 text-[11px] leading-snug" style={{ color: "var(--faint)" }}>
+            {chosenWorkflow.description}
+          </p>
+        )}
         <div className="mt-1.5 flex flex-wrap gap-1">
-          {EXAMPLES.map((example) => (
+          {examples.map((example) => (
             <button
               key={example}
               type="button"

@@ -236,3 +236,60 @@ class Calculate(Tool):
             "expression": expression,
             "result": int(rounded) if rounded == int(rounded) else rounded,
         }
+
+
+@tool
+class Remember(Tool):
+    name = "remember"
+    description = (
+        "Record a lesson for future runs, not just this one. Use it for things "
+        "worth knowing next time: a source that proved authoritative or "
+        "unreliable, a search phrasing that worked where others failed, a fact "
+        "that will still be true in a month."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "key": {
+                "type": "string",
+                "description": (
+                    "A short stable identifier, like 'source.reliable.who.int'. "
+                    "Remembering the same key again strengthens it."
+                ),
+            },
+            "content": {
+                "type": "string",
+                "description": "The lesson, as one self contained sentence.",
+            },
+            "kind": {
+                "type": "string",
+                "enum": ["fact", "lesson", "source_quality"],
+                "description": "fact: a durable fact. lesson: how to work. source_quality: about a source.",
+                "default": "lesson",
+            },
+        },
+        "required": ["key", "content"],
+    }
+    metered = False
+    # This is the one tool whose effect outlasts the run that called it, which
+    # is what `side_effects` is for. With APPROVE_SIDE_EFFECTS on, it needs a
+    # person to agree before anything is written.
+    side_effects = True
+
+    def call(self, ctx: Any, *, key: str, content: str, kind: str = "lesson") -> Any:
+        key = key.strip()[:120]
+        content = content.strip()
+        if len(content) < 20:
+            raise ToolError(
+                "That lesson is too short to be useful later.",
+                hint="Write it as a full sentence that will still make sense in a month.",
+            )
+        if not key:
+            raise ToolError("A memory needs a short stable key.")
+
+        ctx.remember(kind=kind, key=key, content=content, run=ctx.run_key)
+        return {
+            "remembered": key,
+            "kind": kind,
+            "message": "Stored. Future runs will see this when they plan.",
+        }

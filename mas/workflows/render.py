@@ -57,6 +57,9 @@ def _verification_section(ctx: Any) -> str:
             f"- Editorial review: scored {latest.get('score', '?')} out of 100 after "
             f"{len(critiques)} round(s)"
         )
+    conflicts = ctx.board.conflicts
+    lines.append(f"- Claim pairs found to conflict with each other: {len(conflicts)}")
+
     if rejected:
         lines += ["", "Excluded because the sources did not establish them:", ""]
         for claim in rejected[:8]:
@@ -64,6 +67,24 @@ def _verification_section(ctx: Any) -> str:
             lines.append(
                 f"- {truncate(claim.get('text', ''), 160)} "
                 f"({verdict.get('verdict', 'unsupported')})"
+            )
+
+    if conflicts:
+        # Named here as well as in the body, because a reader deciding how much
+        # to trust the report wants the disagreements in one place rather than
+        # scattered through the prose that reports them.
+        lines += ["", "Where the sources disagree:", ""]
+        for conflict in conflicts[:6]:
+            better = conflict.get("better_supported")
+            verdict = (
+                f" Better supported: {conflict['a'] if better == 'A' else conflict['b']}."
+                if better in {"A", "B"}
+                else " Neither is better supported."
+            )
+            lines.append(
+                f"- {conflict.get('relation', 'conflict')} between "
+                f"{conflict.get('a')} and {conflict.get('b')}: "
+                f"{truncate(conflict.get('explanation', ''), 220)}{verdict}"
             )
     return "\n".join(lines)
 
@@ -107,6 +128,7 @@ def build_report(ctx: Any) -> dict[str, Any]:
         "uncorroborated": len(
             [c for c in supported if not (c.get("verdict") or {}).get("corroborated")]
         ),
+        "conflicts": ctx.board.conflicts,
         "revisions": ctx.board.revision,
         "research_rounds": int(ctx.board.get("research_rounds", 1)),
         "score": critiques[-1].get("score") if critiques else None,

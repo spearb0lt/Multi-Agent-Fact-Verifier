@@ -10,6 +10,7 @@ from .critic import Critic
 from .editor import Editor
 from .factchecker import FactChecker
 from .planner import Planner
+from .reconciler import Reconciler
 from .researcher import Researcher
 from .supervisor import Supervisor
 from .writer import Writer
@@ -18,6 +19,7 @@ planner = Planner()
 researcher = Researcher()
 analyst = Analyst()
 factchecker = FactChecker()
+reconciler = Reconciler()
 supervisor = Supervisor()
 writer = Writer()
 editor = Editor()
@@ -36,7 +38,8 @@ ROSTER = {
 
 __all__ = [
     "ROSTER", "Agent", "Analyst", "Critic", "Editor", "FactChecker", "Planner",
-    "Researcher", "Supervisor", "Writer", "analyst", "claims_digest", "critic",
-    "editor", "evidence_digest", "factchecker", "findings_digest", "planner",
-    "researcher", "supervisor", "writer",
+    "Reconciler", "Researcher", "Supervisor", "Writer", "analyst",
+    "claims_digest", "critic", "editor", "evidence_digest", "factchecker",
+    "findings_digest", "planner", "reconciler", "researcher", "supervisor",
+    "writer",
 ]

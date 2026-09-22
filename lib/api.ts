@@ -105,6 +105,8 @@ export interface Board {
   verdicts?: Verdict[];
   draft?: { markdown?: string; words?: number; revision?: number };
   critiques?: Critique[];
+  conflicts?: Conflict[];
+  ruling?: Ruling;
   report?: { markdown?: string; title?: string };
   decisions?: Decision[];
   research_rounds?: number;
@@ -159,6 +161,32 @@ export interface Critique {
   strengths: string[];
   issues: { severity: string; issue: string; fix: string }[];
   revision: number;
+}
+
+export interface Conflict {
+  a: string;
+  b: string;
+  a_text: string;
+  b_text: string;
+  a_sources: string[];
+  b_sources: string[];
+  relation: "contradiction" | "tension";
+  explanation: string;
+  better_supported: "A" | "B" | "neither";
+  why: string;
+  similarity: number;
+}
+
+/** The claim_check workflow's product, which research_report does not have. */
+export interface Ruling {
+  verdict: string;
+  confidence: string;
+  reasoning: string;
+  sources: string[];
+  domains: string[];
+  independent_domains: number;
+  corroborated: boolean;
+  what_would_settle_it: string;
 }
 
 export interface Decision {

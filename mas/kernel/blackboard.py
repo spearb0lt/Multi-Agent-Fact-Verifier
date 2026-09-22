@@ -168,6 +168,11 @@ class Blackboard:
         return self.mapping("report")
 
     @property
+    def conflicts(self) -> list[dict[str, Any]]:
+        """Claim pairs the Reconciler ruled are in conflict."""
+        return self.items("conflicts")
+
+    @property
     def revision(self) -> int:
         return int(self.get("revision", 0))
 
@@ -218,6 +223,7 @@ class Blackboard:
                 "supported": len(self.supported_claims()),
                 "rejected": len(self.rejected_claims()),
                 "critiques": len(self.critiques),
+                "conflicts": len(self.conflicts),
             },
             "has_draft": bool(self.draft.get("markdown")),
             "has_report": bool(self.report.get("markdown")),

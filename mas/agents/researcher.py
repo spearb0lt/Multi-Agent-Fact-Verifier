@@ -33,7 +33,15 @@ SCHEMA = """{
 class Researcher(Agent):
     role = "Researcher"
     goal = "Answer one subquestion from real sources and record what you establish."
-    tools = ("web_search", "fetch_page", "list_evidence", "record_finding", "calculate")
+    tools = (
+        "web_search",
+        "fetch_page",
+        "search_evidence",
+        "list_evidence",
+        "record_finding",
+        "calculate",
+        "remember",
+    )
     temperature = 0.2
     max_tokens = 1600
 
@@ -47,6 +55,8 @@ How to work:
    what makes it citable; a search snippet is not a source.
 3. Call record_finding for each specific fact you establish, citing the source
    references that fetch_page returned. Record as you go, not at the end.
+   Before searching the web again, try search_evidence: a colleague may have
+   already fetched the page that answers your question.
 4. When the question is answered, or when further searching is clearly not
    helping, give your final_answer.
 

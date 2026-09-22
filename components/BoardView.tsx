@@ -39,6 +39,9 @@ export default function BoardView({ board, evidence }: Props) {
   const verdictFor = (id: string) => verdicts.find((v) => v.claim_id === id);
   const byRef = new Map(evidence.map((e) => [e.ref, e]));
 
+  const conflicts = board.conflicts || [];
+  const ruling = board.ruling;
+
   const tabs: { id: Tab; label: string; count: number }[] = [
     { id: "plan", label: "Plan", count: subquestions.length },
     { id: "findings", label: "Findings", count: findings.length },
@@ -162,7 +165,59 @@ export default function BoardView({ board, evidence }: Props) {
 
         {tab === "claims" && (
           <div className="space-y-2">
-            {claims.length === 0 && (
+            {ruling && (
+              <div className="panel p-3" style={{ borderLeft: "3px solid var(--accent)" }}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[15px] font-semibold">
+                    {String(ruling.verdict || "").replace(/_/g, " ")}
+                  </span>
+                  <span className="chip" style={{ color: "var(--muted)" }}>
+                    {ruling.confidence} confidence
+                  </span>
+                  <span
+                    className="chip"
+                    style={{ color: ruling.corroborated ? "var(--ok)" : "var(--warn)" }}
+                  >
+                    {ruling.independent_domains} independent outlet
+                    {ruling.independent_domains === 1 ? "" : "s"}
+                  </span>
+                </div>
+                {ruling.reasoning && (
+                  <p className="mt-1.5 text-[12.5px] leading-snug">{ruling.reasoning}</p>
+                )}
+                {ruling.what_would_settle_it && (
+                  <p className="mt-1.5 text-[11px]" style={{ color: "var(--muted)" }}>
+                    What would settle it: {ruling.what_would_settle_it}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {conflicts.length > 0 && (
+              <div className="panel p-3" style={{ borderLeft: "3px solid var(--warn)" }}>
+                <h4 className="text-[11px] uppercase tracking-wide mb-1.5" style={{ color: "var(--warn)" }}>
+                  Where the sources disagree
+                </h4>
+                {conflicts.map((c, i) => (
+                  <div key={i} className="mb-2 last:mb-0">
+                    <span className="chip" style={{ color: "var(--warn)", borderColor: "var(--warn)" }}>
+                      {c.relation}
+                    </span>
+                    <span className="chip font-mono" style={{ color: "var(--faint)" }}>
+                      {c.a} vs {c.b}
+                    </span>
+                    <p className="mt-1 text-[12px] leading-snug">{c.explanation}</p>
+                    <p className="mt-0.5 text-[11px]" style={{ color: "var(--muted)" }}>
+                      {c.better_supported === "neither"
+                        ? "Neither is better supported."
+                        : `Better supported: ${c.better_supported === "A" ? c.a : c.b}. ${c.why}`}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {claims.length === 0 && !ruling && (
               <p style={{ color: "var(--faint)" }}>
                 The Analyst has not consolidated the findings into claims yet.
               </p>

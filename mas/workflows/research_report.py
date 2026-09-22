@@ -17,6 +17,10 @@
                    +------+------+                      |
                           | verdicts                    |
                    +------v------+                      |
+                   | Reconciler  | conflicting claims   |
+                   +------+------+                      |
+                          |                             |
+                   +------v------+                      |
                    | Supervisor  +----------------------+
                    +------+------+  research_more
                           | write
@@ -54,6 +58,7 @@ from ..agents import (
     editor,
     factchecker,
     planner,
+    reconciler,
     researcher,
     supervisor,
     writer,
@@ -253,7 +258,7 @@ def analyse_node(ctx: Any, task: Task) -> NodeResult:
             output={"claims": len(claims), "reused_verdicts": len(carried)},
             action="analysed",
             artifacts=[artifact],
-            next=[Task(node="supervise")],
+            next=[Task(node="reconcile")],
         )
 
     ctx.board.update(verify_expected=len(pending), verify_done=0)
@@ -311,9 +316,63 @@ def verify_node(ctx: Any, task: Task) -> NodeResult:
     if done >= expected:
         ctx.board.set("verify_done", 0)
         return NodeResult(
-            output=verdict, action="verified", messages=messages, next=[Task(node="supervise")]
+            output=verdict,
+            action="verified",
+            messages=messages,
+            artifacts=[
+                factchecker.artifact(
+                    ArtifactKind.VERDICT.value,
+                    f"verdicts-r{ctx.board.get('research_rounds', 1)}",
+                    title=f"{len(ctx.board.verdicts)} verdict(s)",
+                    content={"verdicts": ctx.board.verdicts},
+                )
+            ],
+            next=[Task(node="reconcile")],
         )
     return NodeResult(output=verdict, action="verified", messages=messages)
+
+
+# ----------------------------------------------------------------- reconcile
+
+
+@graph.node(
+    "reconcile",
+    agent="FactChecker",
+    label="Reconcile",
+    description="Decide whether any two verified claims conflict",
+)
+def reconcile_node(ctx: Any, task: Task) -> NodeResult:
+    conflicts = reconciler.reconcile(ctx)
+    ctx.board.set("conflicts", conflicts)
+
+    if not conflicts:
+        return NodeResult(
+            output={"conflicts": 0}, action="no conflicts", next=[Task(node="supervise")]
+        )
+
+    messages = [
+        Message(
+            sender="FactChecker",
+            recipient="Writer",
+            topic=f"{c['relation']} between {c['a']} and {c['b']}",
+            content=c["explanation"],
+        )
+        for c in conflicts
+    ]
+    return NodeResult(
+        output={"conflicts": len(conflicts)},
+        action=f"found {len(conflicts)} conflict(s)",
+        messages=messages,
+        artifacts=[
+            factchecker.artifact(
+                ArtifactKind.VERDICT.value,
+                "conflicts",
+                title=f"{len(conflicts)} conflicting claim pair(s)",
+                content={"conflicts": conflicts},
+            )
+        ],
+        next=[Task(node="supervise")],
+    )
 
 
 # ----------------------------------------------------------------- supervise
@@ -514,8 +573,9 @@ def finalise_node(ctx: Any, task: Task) -> NodeResult:
 graph.edge("plan", "research")
 graph.edge("research", "analyse")
 graph.edge("analyse", "verify")
-graph.edge("analyse", "supervise", "all verified")
-graph.edge("verify", "supervise")
+graph.edge("analyse", "reconcile", "all verified")
+graph.edge("verify", "reconcile")
+graph.edge("reconcile", "supervise")
 graph.edge("supervise", "plan", "research_more")
 graph.edge("supervise", "write", "write")
 graph.edge("write", "edit")

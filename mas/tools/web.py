@@ -30,8 +30,17 @@ from ..core.util import host_of, simhash, truncate
 from ..core.web.base import HttpClient, RawItem, SourceError, dedupe_items
 from ..core.web.extract import extract_article
 from ..core.web.search import SearchAdapter
+from ..kernel.semantic import (
+    MIN_ARTICLE_CHARS,
+    article_text,
+    best_passages,
+    embed_document,
+    rank_evidence,
+)
 from ..kernel.tool import Tool, ToolError, tool
 from . import keyless
+from .fallback import describe as fallback_describe
+from .fallback import read_blocked_page
 from .rank import rank_items
 
 # One shared client, so the per host delay is observed across every agent
@@ -195,26 +204,95 @@ class FetchPage(Tool):
                     "summary": truncate(row["body"] or row["snippet"], 1500),
                 }
 
-        try:
-            response = _client.get(url, accept="text/html")
-        except SourceError as exc:
-            raise ToolError(f"Could not fetch {host_of(url)}: {exc}") from exc
+        domain = host_of(url)
+        article: dict[str, Any] = {}
+        body = ""
+        title = ""
+        route = "fetch"
+        route_note = ""
+        status = 0
+        direct_error = ""
 
-        if not response.ok:
-            raise ToolError(
-                f"{host_of(url)} returned HTTP {response.status}.",
-                hint="Try a different source for the same fact.",
-            )
+        # A domain already known to block direct reads goes straight to the
+        # fallback. That is the memory system earning its place: without it
+        # every run pays the same 403 to learn the same thing.
+        skip_direct = any(
+            row["mem_key"] == f"blocked:{domain}" for row in ctx.recall(kind="source_quality", limit=40)
+        )
 
-        article = extract_article(response.text, url)
-        # The extractor names the body "content"; "text" is what this tool
-        # reports back to the agent, which is a different thing and truncated.
-        body = str(article.get("content") or "").strip()
-        title = str(article.get("title") or "").strip()
+        if not skip_direct:
+            try:
+                response = _client.get(url, accept="text/html")
+                status = response.status
+                if response.ok:
+                    article = extract_article(response.text, url)
+                    body = str(article.get("content") or "").strip()
+                    title = str(article.get("title") or "").strip()
+            except SourceError as exc:
+                direct_error = str(exc)
 
         if not body:
+            # The sites that refuse a plain client hardest are the ones most
+            # worth citing, so losing them quietly is the single biggest drag
+            # on a report's quality.
+            recovered = read_blocked_page(url, _client, status=status or 403)
+            if recovered:
+                raw, recovered_title, meta = recovered
+                # A proxy returns the whole page, so what comes back has to be
+                # reduced to its article before it is stored. Skipping this
+                # step stored 2,900 words of navigation and a privacy notice
+                # as a citable source, which is worse than storing nothing:
+                # the run then reports five sources and cites a cookie banner.
+                body = article_text(raw)
+                if len(body) < MIN_ARTICLE_CHARS:
+                    ctx.bus.log(
+                        f"{domain} was reachable through the {meta.get('via')} fallback but "
+                        f"the page carried no article, only navigation and notices.",
+                        level="warning",
+                        url=url,
+                    )
+                    ctx.remember(
+                        kind="source_quality",
+                        key=f"chromeonly:{domain}",
+                        content=(
+                            f"{domain} blocks direct reads and the fallback returns only "
+                            f"page furniture, so it cannot be cited."
+                        ),
+                    )
+                    body = ""
+                    recovered = None
+            if recovered:
+                title = title or recovered_title
+                route = str(meta.get("via", "fallback"))
+                route_note = fallback_describe(meta)
+                article = article or {}
+                if meta.get("snapshot_date"):
+                    article.setdefault("published_at", meta["snapshot_date"])
+                ctx.remember(
+                    kind="source_quality",
+                    key=f"blocked:{domain}",
+                    content=(
+                        f"{domain} refuses a direct fetch (HTTP {status or 'error'}) but is "
+                        f"readable through the {route} fallback."
+                    ),
+                    route=route,
+                )
+                ctx.bus.log(
+                    f"{domain} refused a direct read, so it was {route_note}.",
+                    level="info",
+                    url=url,
+                    route=route,
+                )
+
+        if not body:
+            if direct_error:
+                raise ToolError(
+                    f"Could not fetch {domain}: {direct_error}",
+                    hint="Try a different source for the same fact.",
+                )
             raise ToolError(
-                f"No readable article text could be extracted from {host_of(url)}.",
+                f"{domain} returned HTTP {status or 'no readable content'} and no fallback "
+                f"could read it either.",
                 hint="The page may be a paywall, a video or a listing. Try another source.",
             )
 
@@ -222,23 +300,27 @@ class FetchPage(Tool):
         if len(body) < 400:
             ctx.remember(
                 kind="source_quality",
-                key=f"thin:{host_of(url)}",
-                content=f"{host_of(url)} returns very little extractable text.",
+                key=f"thin:{domain}",
+                content=f"{domain} returns very little extractable text.",
             )
 
         ref, is_new = ctx.add_evidence(
             {
                 "url": url,
-                "domain": host_of(url),
+                "domain": domain,
                 "title": title,
                 "author": str(article.get("author") or ""),
                 "snippet": truncate(body, 500),
                 "body": body,
                 "published_at": str(article.get("published_at") or "") or None,
-                "backend": "fetch",
-                "found_by": getattr(ctx, "_current_agent", ""),
+                "backend": route,
+                "found_by": ctx.bus.agent or "",
                 "query": why,
                 "simhash": str(simhash(body)),
+                # Stored so that a later question can find this page without
+                # reading it back in full, and so that claims drawn from it can
+                # be compared with claims drawn from anywhere else.
+                "embedding": embed_document(title, body),
             }
         )
 
@@ -246,10 +328,11 @@ class FetchPage(Tool):
             "ref": ref,
             "title": title,
             "url": url,
-            "domain": host_of(url),
+            "domain": domain,
             "published_at": article.get("published_at") or "",
             "words": len(body.split()),
-            "extraction": article.get("method", ""),
+            "extraction": article.get("method", "") or route,
+            "read_via": route_note or "a direct request",
             "already_had_it": not is_new,
             # Enough for the agent to judge relevance and quote accurately,
             # without putting the whole page in its context every turn.
@@ -355,3 +438,65 @@ def search_status() -> dict[str, Any]:
         "keyless": free,
         "usable": bool(keyed or free),
     }
+
+
+@tool
+class SearchEvidence(Tool):
+    name = "search_evidence"
+    description = (
+        "Search inside the sources this run has already fetched, and get back "
+        "the passages that actually bear on your question. Use this before "
+        "searching the web again: the answer is often already in something a "
+        "colleague read."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "What you are looking for, in your own words.",
+            },
+            "limit": {
+                "type": "integer",
+                "description": "How many sources to look inside.",
+                "default": 3,
+                "minimum": 1,
+                "maximum": 8,
+            },
+        },
+        "required": ["query"],
+    }
+    # Local vectors, no network and no provider. Charging it against the run's
+    # tool ceiling would discourage exactly the behaviour worth encouraging.
+    metered = False
+
+    def call(self, ctx: Any, *, query: str, limit: int = 3) -> Any:
+        rows = ctx.evidence()
+        if not rows:
+            raise ToolError(
+                "Nothing has been fetched in this run yet.",
+                hint="Use web_search and fetch_page first.",
+            )
+
+        ranked = rank_evidence(rows, query, limit=limit)
+        hits = []
+        for row, score in ranked:
+            passages = best_passages(row.get("body") or row.get("snippet") or "", query)
+            if not passages:
+                continue
+            hits.append(
+                {
+                    "ref": row["ref"],
+                    "title": row["title"],
+                    "domain": row["domain"],
+                    "relevance": round(float(score), 3),
+                    "passages": passages,
+                }
+            )
+
+        if not hits:
+            raise ToolError(
+                f"None of the {len(rows)} stored sources say anything about '{query}'.",
+                hint="Search the web for it instead.",
+            )
+        return {"query": query, "searched": len(rows), "sources": hits}

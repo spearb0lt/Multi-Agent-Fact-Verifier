@@ -23,7 +23,9 @@ The repository owner is the sole contributor of record.
     the graph and the orchestrator. Nothing here knows what a Researcher is.
   - `mas/agents/` is one module per role. The interesting differences between
     roles are in their prompts and their tools, not their control flow.
-  - `mas/workflows/` wires roles into a graph.
+  - `mas/workflows/` wires roles into a graph. There are two: `research_report`
+    takes a topic, `claim_check` takes one claim. A change to the kernel that
+    only works for one of them is a change in the wrong place.
   - `mas/tools/` is what an agent may actually do.
 - `app/`, `components/`, `lib/` are the Next.js frontend.
 - `out/` is the exported frontend, served by the Python process. It is build
@@ -69,6 +71,16 @@ paused, resumed, and reported itself complete having written nothing.
 - `extract_article` returns the body under `content`, not `text`. Reading the
   wrong key returns an empty string for every page and looks like every site
   blocking the crawler.
+- A text extraction proxy returns the WHOLE page, not its article. Stored
+  without `semantic.article_text` that is 2,900 words of navigation and a
+  privacy notice saved as a citable source, while the run cheerfully reports
+  five sources gathered. Length is not a usable filter for this: a menu is
+  long, a consent banner is written in full sentences, and a legal disclaimer
+  is both. What furniture never has is a terminated sentence, and what it
+  always has is one of the phrases in `semantic._CHROME`.
+- Roughly a quarter of direct fetches return 403, and they are the sites most
+  worth citing. `tools/fallback.py` recovers many of them. When it cannot, the
+  domain is remembered so the next run does not pay to find out again.
 - Models send array arguments as JSON strings (`'["S4"]'`) about as often as
   they send arrays. `kernel/tool.py` unwraps that. Without it, every
   `record_finding` call is rejected and the run produces nothing while looking

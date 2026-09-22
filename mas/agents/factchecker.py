@@ -35,7 +35,7 @@ SCHEMA = """{
 class FactChecker(Agent):
     role = "FactChecker"
     goal = "Rule on whether the cited sources establish the claim."
-    tools = ("read_evidence", "web_search", "fetch_page")
+    tools = ("read_evidence", "search_evidence", "web_search", "fetch_page")
     temperature = 0.1
     max_tokens = 1200
     max_iterations = 4
