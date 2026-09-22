@@ -42,7 +42,7 @@ Most "AI research agent" projects are a prompt chain wearing a costume: one mode
 Two graphs on one kernel. Adding the second one required no change to the orchestrator, the blackboard, the budget guard or the UI.
 
 <table>
-<tr><th width="55%">research_report — takes a topic</th><th width="45%">claim_check — takes one claim</th></tr>
+<tr><th width="55%">research_report, takes a topic</th><th width="45%">claim_check, takes one claim</th></tr>
 <tr valign="top"><td>
 
 ```
@@ -233,6 +233,10 @@ One process, one port, one origin. For frontend development instead:
 python -m mas.main --reload     # API on 8000
 npm run dev                     # UI on 3000
 ```
+
+![Starting a run](docs/media/home.png)
+
+*The workflow you pick redraws the graph beside it. The ceilings are on the form rather than buried in settings, because the person starting a run is the person who cares what it costs.*
 
 ## Reading a run
 

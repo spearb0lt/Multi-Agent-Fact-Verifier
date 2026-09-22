@@ -404,6 +404,11 @@ def cmd_list(args: argparse.Namespace) -> int:
     if not runs:
         print("no runs yet")
         return 0
+    # The same live figures the web UI shows, so the two doors agree about what
+    # a run has spent while it is still spending it.
+    for run in runs:
+        if run["status"] == "running":
+            run["spent"] = store.live_spend(int(run["id"]), run)
     print(f"{'RUN':<20} {'STATUS':<10} {'STEPS':>5} {'TOKENS':>9} {'USD':>8}  BRIEF")
     print("-" * 100)
     for run in runs:
@@ -424,7 +429,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         print("no such run")
         return 1
     run_id = int(run["id"])
-    spent = run.get("spent") or {}
+    spent = store.live_spend(run_id, run)
     budget = run.get("budget") or {}
 
     print(paint(run["run_key"], "bold"))

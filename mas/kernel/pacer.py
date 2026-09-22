@@ -40,7 +40,11 @@ from ..core import settings
 # A provider absent from here is not paced at all, which is right for a local
 # model server and for any account paying for capacity.
 DEFAULT_RPM: dict[str, int] = {
-    "gemini": 12,
+    # Gemini's free tier is the tightest of the lot on requests, and three
+    # researchers in parallel exhausted it in under a minute at 12. It is also
+    # limited per day, which no amount of pacing helps with, so a run that
+    # stops on Gemini is usually told to continue somewhere else.
+    "gemini": 8,
     "groq": 25,
     "cloudflare": 250,
     "huggingface": 45,

@@ -260,11 +260,11 @@ export default function RunView({ runKey }: { runKey: string }) {
 
       <div className="grid xl:grid-cols-[minmax(0,1fr)_320px] gap-4 items-start">
         <div className="space-y-4 min-w-0">
-          <div className="grid lg:grid-cols-[auto_minmax(0,1fr)] gap-4 items-stretch">
-            <div
-              className="panel p-3 flex items-start justify-center overflow-y-auto scroll-thin"
-              style={{ height: 460 }}
-            >
+          <div className="grid lg:grid-cols-[auto_minmax(0,1fr)] gap-4 items-start">
+            {/* The graph sizes to its content. Clipping it to match the trace
+                hid half the team on the ten node workflow, which is the one
+                thing this panel exists to show. */}
+            <div className="panel p-3 flex items-start justify-center">
               <AgentGraph
                 graph={run.graph}
                 states={nodeStates.states}
