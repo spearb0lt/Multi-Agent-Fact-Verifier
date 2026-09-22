@@ -565,6 +565,53 @@ def record_usage(
     )
 
 
+def live_spend(run_id: int, row: dict[str, Any]) -> dict[str, Any]:
+    """What the run has spent right now, not as of the last completed step.
+
+    The `spent` blob on the run is written at each step boundary, which is the
+    right place for the budget guard to persist it but the wrong number to show
+    somebody watching. A research step takes minutes, so a viewer sees zero
+    tokens and zero cost while three agents are visibly working, and concludes
+    the run is stuck. The itemised tables already know the truth.
+    """
+    spent = dict(row.get("spent") or {})
+
+    totals = get_db().query_one(
+        """
+        SELECT COUNT(*)        AS calls,
+               SUM(tokens_in)  AS tokens_in,
+               SUM(tokens_out) AS tokens_out,
+               SUM(cost_usd)   AS cost_usd
+          FROM usage WHERE run_id = ?
+        """,
+        (run_id,),
+    )
+    if totals and totals["calls"]:
+        tokens_in = int(totals["tokens_in"] or 0)
+        tokens_out = int(totals["tokens_out"] or 0)
+        spent["llm_calls"] = int(totals["calls"])
+        spent["tokens_in"] = tokens_in
+        spent["tokens_out"] = tokens_out
+        spent["tokens"] = tokens_in + tokens_out
+        spent["usd"] = round(float(totals["cost_usd"] or 0), 6)
+
+    tools = get_db().scalar(
+        "SELECT COUNT(*) FROM tool_calls WHERE run_id = ?", (run_id,)
+    )
+    if tools:
+        spent["tool_calls"] = int(tools)
+
+    # Wall clock from when the run actually started, so the elapsed figure
+    # keeps moving during a long step rather than jumping at the end of it.
+    from ..core.util import parse_datetime
+
+    started = parse_datetime(row.get("started_at"))
+    if started and str(row.get("status")) == "running":
+        spent["seconds"] = max(float(spent.get("seconds") or 0), (utcnow() - started).total_seconds())
+
+    return spent
+
+
 def usage_by_agent(run_id: int) -> list[dict[str, Any]]:
     rows = get_db().query(
         """

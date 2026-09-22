@@ -44,6 +44,7 @@ ROLE_TIERS: dict[str, Tier] = {
     "Researcher": Tier.CHEAP,
     "Analyst": Tier.STRONG,
     "FactChecker": Tier.CHEAP,
+    "Reconciler": Tier.CHEAP,
     "Writer": Tier.STRONG,
     "Editor": Tier.STRONG,
     "Critic": Tier.STRONG,

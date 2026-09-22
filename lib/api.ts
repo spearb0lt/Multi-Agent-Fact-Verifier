@@ -420,28 +420,62 @@ export function subscribe(
     };
   }
 
-  const source = new EventSource(`${API_BASE}/api/runs/${key}/stream?after=${after}`);
-  source.onmessage = (raw) => {
-    try {
-      const event = JSON.parse(raw.data) as TraceEvent;
-      cursor = event.id ?? cursor;
-      onEvent(event);
-    } catch {
-      /* A malformed frame is skipped rather than breaking the stream. */
-    }
+  // A run takes minutes, and a stream held open that long gets dropped: by a
+  // proxy, by a sleeping laptop, by the network changing. Without reconnecting
+  // the trace silently freezes while the agents carry on working, which reads
+  // as the run having hung. So the stream is reopened from the last event seen,
+  // which is what the cursor is for, and no event is repeated or missed.
+  let source: EventSource | null = null;
+  let retry: ReturnType<typeof setTimeout> | null = null;
+  let attempt = 0;
+  let finished = false;
+
+  const connect = () => {
+    if (stopped || finished) return;
+    source = new EventSource(`${API_BASE}/api/runs/${key}/stream?after=${cursor}`);
+
+    source.onopen = () => {
+      attempt = 0;
+    };
+
+    source.onmessage = (raw) => {
+      try {
+        const event = JSON.parse(raw.data) as TraceEvent;
+        // Guard against a replay after a reconnect handing back an event the
+        // caller has already rendered.
+        if (event.id && event.id <= cursor) return;
+        cursor = event.id ?? cursor;
+        onEvent(event);
+      } catch {
+        /* A malformed frame is skipped rather than breaking the stream. */
+      }
+    };
+
+    source.addEventListener("done", () => {
+      finished = true;
+      source?.close();
+      onDone();
+    });
+
+    source.onerror = () => {
+      source?.close();
+      source = null;
+      if (stopped || finished) return;
+      // Tell the caller so it refetches the run's state, then reconnect with a
+      // backoff that tops out quickly: a run is still going and the point is to
+      // resume watching it, not to be polite to a server on the same machine.
+      onDone();
+      attempt += 1;
+      const wait = Math.min(1000 * 2 ** (attempt - 1), 8000);
+      retry = setTimeout(connect, wait);
+    };
   };
-  source.addEventListener("done", () => {
-    onDone();
-    source.close();
-  });
-  source.onerror = () => {
-    // The browser retries on its own. Closing here and letting the caller
-    // refetch is more predictable than an invisible reconnect loop.
-    source.close();
-    if (!stopped) onDone();
-  };
+
+  connect();
+
   return () => {
     stopped = true;
-    source.close();
+    if (retry) clearTimeout(retry);
+    source?.close();
   };
 }

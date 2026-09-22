@@ -261,19 +261,26 @@ export default function RunView({ runKey }: { runKey: string }) {
       <div className="grid xl:grid-cols-[minmax(0,1fr)_320px] gap-4 items-start">
         <div className="space-y-4 min-w-0">
           <div className="grid lg:grid-cols-[auto_minmax(0,1fr)] gap-4 items-stretch">
-            <div className="panel p-3 flex items-start justify-center">
+            <div
+              className="panel p-3 flex items-start justify-center overflow-y-auto scroll-thin"
+              style={{ height: 460 }}
+            >
               <AgentGraph
                 graph={run.graph}
                 states={nodeStates.states}
                 counts={nodeStates.counts}
               />
             </div>
-            <div className="panel overflow-hidden" style={{ minHeight: 420 }}>
+            {/* A definite height, not a minimum. The trace scrolls itself and
+                follows the newest line; given only a minimum it grows instead,
+                the inner scroller never scrolls, and the live activity ends up
+                below the fold on a run that is still going. */}
+            <div className="panel overflow-hidden" style={{ height: 460 }}>
               <Trace events={events} live={!!live} />
             </div>
           </div>
 
-          <div className="panel overflow-hidden flex flex-col" style={{ minHeight: 360 }}>
+          <div className="panel overflow-hidden flex flex-col" style={{ height: 520 }}>
             <div className="flex gap-1 px-3 py-2 border-b" style={{ borderColor: "var(--line)" }}>
               {tabs.map((item) => (
                 <button

@@ -196,6 +196,8 @@ def list_runs(limit: int = Query(default=30, ge=1, le=200), status: str = "") ->
     runs = store.list_runs(limit=limit, status=status)
     for run in runs:
         run["executing_here"] = worker.is_running(str(run["run_key"]))
+        if run["status"] == "running":
+            run["spent"] = store.live_spend(int(run["id"]), run)
     return {"runs": runs, "worker": {"active": worker.queue_depth()}}
 
 
@@ -206,6 +208,9 @@ def get_run(run_key: str) -> dict[str, Any]:
     latest = store.latest_checkpoint(run_id)
     return {
         **run,
+        # The itemised tables, not the step boundary snapshot, so a viewer sees
+        # the cost climbing while a long step is still running.
+        "spent": store.live_spend(run_id, run),
         "executing_here": worker.is_running(run_key),
         "has_client_keys": worker.has_credentials(run_key),
         "evidence_count": store.evidence_count(run_id),

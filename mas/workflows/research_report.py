@@ -71,10 +71,11 @@ graph = Graph(
     name="research_report",
     entry="plan",
     description=(
-        "Eight agents: a Planner decomposes the brief, Researchers gather sources in "
-        "parallel, an Analyst consolidates claims, Fact Checkers verify them in "
-        "parallel, a Supervisor decides whether to write or research further, then a "
-        "Writer, an Editor and a Critic produce and hold the report to a standard."
+        "Nine roles. A Planner decomposes the brief, Researchers gather sources in "
+        "parallel, an Analyst consolidates them into claims, Fact Checkers verify "
+        "those in parallel, a Reconciler rules on any that conflict, a Supervisor "
+        "decides whether to write or research further, then a Writer, an Editor and "
+        "a Critic produce the report and hold it to a standard."
     ),
 )
 
@@ -337,7 +338,7 @@ def verify_node(ctx: Any, task: Task) -> NodeResult:
 
 @graph.node(
     "reconcile",
-    agent="FactChecker",
+    agent="Reconciler",
     label="Reconcile",
     description="Decide whether any two verified claims conflict",
 )

@@ -34,7 +34,7 @@ SCHEMA = """{
 
 
 class Reconciler(Agent):
-    role = "FactChecker"
+    role = "Reconciler"
     goal = "Decide whether two claims about the same thing actually conflict."
     temperature = 0.1
     max_tokens = 700

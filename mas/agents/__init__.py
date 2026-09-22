@@ -30,6 +30,7 @@ ROSTER = {
     "Researcher": researcher,
     "Analyst": analyst,
     "FactChecker": factchecker,
+    "Reconciler": reconciler,
     "Supervisor": supervisor,
     "Writer": writer,
     "Editor": editor,
