@@ -33,7 +33,45 @@ def _sources_section(ctx: Any, used: list[str]) -> str:
     return "\n".join(lines)
 
 
+def _ruling_section(ctx: Any) -> str:
+    """The accounting for a claim check, which has a ruling rather than claims.
+
+    Reporting the research workflow's numbers here would print four zeroes and
+    a line about an Analyst that never ran, which reads as the check having
+    done nothing rather than as the section not applying.
+    """
+    ruling = ctx.board.mapping("ruling")
+    domains = ruling.get("domains") or []
+    lines = [
+        "## How this was checked",
+        "",
+        f"Researchers looked for evidence for the claim, against it and around it, "
+        f"gathering {len(ctx.evidence())} source(s). A Fact Checker then weighed all "
+        f"of it.",
+        "",
+        f"- Verdict: {str(ruling.get('verdict', 'unknown')).replace('_', ' ')}",
+        f"- Confidence: {ruling.get('confidence', 'unknown')}",
+        f"- Independent outlets behind the ruling: {len(domains)}"
+        + (f" ({', '.join(domains)})" if domains else ""),
+        f"- Research rounds: {ruling.get('round', 1)}",
+    ]
+    if ruling.get("stated_confidence") and ruling["stated_confidence"] != ruling.get("confidence"):
+        lines.append(
+            f"- The Fact Checker stated {ruling['stated_confidence']} confidence, which "
+            f"was capped at {ruling['confidence']} because too few independent outlets "
+            f"stood behind it."
+        )
+    if ruling.get("what_would_settle_it"):
+        lines += ["", f"What would settle it: {ruling['what_would_settle_it']}"]
+    return "\n".join(lines)
+
+
 def _verification_section(ctx: Any) -> str:
+    # A claim check has a ruling, not a set of claims, and its accounting is a
+    # different shape.
+    if ctx.board.mapping("ruling"):
+        return _ruling_section(ctx)
+
     claims = ctx.board.claims
     supported = ctx.board.supported_claims()
     rejected = ctx.board.rejected_claims()

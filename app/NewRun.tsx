@@ -28,9 +28,11 @@ const EXAMPLES = [
 interface Props {
   config: Config;
   onStarted?: () => void;
+  /** So the page can draw the graph of whichever workflow is selected here. */
+  onWorkflowChange?: (name: string) => void;
 }
 
-export default function NewRun({ config, onStarted }: Props) {
+export default function NewRun({ config, onStarted, onWorkflowChange }: Props) {
   const router = useRouter();
   const [brief, setBrief] = useState("");
   const [workflow, setWorkflow] = useState(config.workflows[0]?.name || "research_report");
@@ -121,7 +123,10 @@ export default function NewRun({ config, onStarted }: Props) {
                 borderColor: w.name === workflow ? "var(--accent)" : "var(--line)",
                 background: w.name === workflow ? "var(--accent-soft)" : "transparent",
               }}
-              onClick={() => setWorkflow(w.name)}
+              onClick={() => {
+                setWorkflow(w.name);
+                onWorkflowChange?.(w.name);
+              }}
             >
               {w.name === "claim_check" ? "Check one claim" : "Research a topic"}
               <span style={{ color: "var(--faint)" }}>{w.nodes.length} agents</span>

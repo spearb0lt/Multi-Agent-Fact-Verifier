@@ -12,6 +12,7 @@ export default function Home() {
   const [config, setConfig] = useState<Config | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [error, setError] = useState("");
+  const [workflow, setWorkflow] = useState("");
 
   const refresh = useCallback(async () => {
     try {
@@ -51,6 +52,9 @@ export default function Home() {
   }
 
   const active = runs.filter((r) => ["running", "paused", "waiting", "pending"].includes(r.status));
+  // The sidebar draws whichever workflow the form is set to, so the picture
+  // and the controls cannot disagree.
+  const shown = config.workflows.find((w) => w.name === workflow) || config.workflows[0];
 
   return (
     <div className="grid lg:grid-cols-[1fr_360px] gap-5 items-start">
@@ -62,7 +66,7 @@ export default function Home() {
           </p>
         </div>
 
-        <NewRun config={config} onStarted={refresh} />
+        <NewRun config={config} onStarted={refresh} onWorkflowChange={setWorkflow} />
 
         <section>
           <h2 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--muted)" }}>
@@ -127,11 +131,9 @@ export default function Home() {
           <h3 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--muted)" }}>
             The workflow
           </h3>
-          {config.workflows[0] && (
-            <AgentGraph graph={config.workflows[0]} states={{}} />
-          )}
+          {shown && <AgentGraph graph={shown} states={{}} />}
           <p className="text-[11px] mt-2 leading-snug" style={{ color: "var(--muted)" }}>
-            {config.workflows[0]?.description}
+            {shown?.description}
           </p>
         </div>
 

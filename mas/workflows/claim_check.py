@@ -240,9 +240,31 @@ def adjudicate_node(ctx: Any, task: Task) -> NodeResult:
     index = ctx.evidence_index()
     domains = sorted({index[ref]["domain"] for ref in sources if ref in index})
 
+    # Confidence is capped by how many independent outlets actually stand
+    # behind the ruling. A model handed a single article will call a claim
+    # false with high confidence, and on one source about one subpopulation
+    # that is not a judgement anybody should act on. The model may be less
+    # confident than the evidence allows; it may not be more.
+    stated = str(payload.get("confidence") or "low").lower()
+    if stated not in {"high", "medium", "low"}:
+        stated = "low"
+    ceiling = "high" if len(domains) >= int(ctx.option("corroboration_min", 2)) else "medium"
+    if len(domains) <= 1:
+        ceiling = "low"
+    order = {"low": 0, "medium": 1, "high": 2}
+    confidence = stated if order[stated] <= order[ceiling] else ceiling
+    if confidence != stated:
+        ctx.bus.log(
+            f"The Fact Checker claimed {stated} confidence on {len(domains)} independent "
+            f"outlet(s), so it was capped at {confidence}.",
+            level="warning",
+            agent="FactChecker",
+        )
+
     ruling = {
         "verdict": verdict,
-        "confidence": str(payload.get("confidence") or "low").lower(),
+        "confidence": confidence,
+        "stated_confidence": stated,
         "reasoning": truncate(str(payload.get("reasoning") or "").strip(), 900),
         "sources": sources,
         "domains": domains,
