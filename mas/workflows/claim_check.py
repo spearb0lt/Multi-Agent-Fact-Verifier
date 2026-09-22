@@ -288,14 +288,28 @@ def adjudicate_node(ctx: Any, task: Task) -> NodeResult:
     # answer and the budget can pay for it. "Unverifiable with no evidence at
     # all" is worth another look; "unverifiable because the question is not
     # empirical" is not, and the difference is whether anything was found.
+    #
+    # Whether the evidence is sufficient is not left to the model alone. It
+    # will declare one local news article enough and then rule with high
+    # confidence, so a ruling that rests on fewer independent outlets than the
+    # corroboration threshold triggers another round regardless of what it
+    # said, exactly as the confidence cap overrides its own certainty.
     rounds = int(ctx.board.get("rounds", 1))
     max_rounds = int(ctx.option("max_research_rounds", 2))
-    enough = bool(payload.get("enough_evidence", True))
+    minimum = int(ctx.option("corroboration_min", 2))
+    enough = bool(payload.get("enough_evidence", True)) and len(domains) >= minimum
     if not enough and rounds < max_rounds and not ctx.budget.critical and findings:
-        ctx.board.set("gaps", [ruling["what_would_settle_it"] or "more direct evidence"])
+        gap = ruling["what_would_settle_it"] or "more direct evidence"
+        if len(domains) < minimum:
+            gap = (
+                f"{gap} The ruling currently rests on {len(domains)} outlet(s): find "
+                f"corroboration from a different publisher, ideally a primary source."
+            )
+        ctx.board.set("gaps", [gap])
         ctx.board.set("subquestions", [])
         ctx.bus.log(
-            "The evidence does not settle the claim yet, so one more round is run.",
+            f"The evidence does not settle the claim yet ({len(domains)} independent "
+            f"outlet(s)), so one more round is run.",
             level="info",
         )
         return NodeResult(

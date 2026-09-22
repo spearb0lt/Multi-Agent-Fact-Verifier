@@ -32,6 +32,9 @@ workflow on it rather than one program described in agent vocabulary.
 | Dynamic routing | `agents/supervisor.py` | Chooses between writing and another research round, on the evidence |
 | Self correction | `agents/critic.py` | Scores the report and sends it back with specific faults, bounded by a counter |
 | Verification | `agents/factchecker.py` | Rules on each claim; failures never reach the Writer |
+| Contradiction | `kernel/semantic.py`, `agents/reconciler.py` | Vectors find same-subject claim pairs; the model rules on only those |
+| Retrieval over evidence | `kernel/semantic.py`, `search_evidence` | Finds the passage in a page a colleague already fetched |
+| Recovering blocked pages | `tools/fallback.py` | A text proxy and the Wayback Machine, then a check that an article came back |
 | Cross run memory | `kernel/store.py` | Lessons like "this domain returns no extractable text" survive the run |
 | Budget awareness | `kernel/budget.py` | Ceilings that pause, and a pressure reading roles degrade against |
 | Rate awareness | `kernel/pacer.py` | Requests and tokens per minute, per provider |
@@ -145,6 +148,27 @@ editing the diagram. A diagram maintained by hand stops being true, and a
 diagram that has stopped being true is worse than none when the question being
 asked is whether this is really a multi agent system.
 
+## Two things the model is not allowed to decide
+
+Most of the system trusts the model's judgement, because that is what it is
+for. Two places deliberately do not, and both were added after a live run got
+them wrong.
+
+**Confidence is capped by corroboration.** A Fact Checker handed one article
+will rule a claim false with high confidence. The ruling's confidence is capped
+by the number of independent outlets behind it: one outlet supports low
+confidence at most. The report states when the cap was applied and what the
+model had claimed, so the override is visible rather than silent.
+
+**Sufficiency is not self-assessed.** The same checker will declare a single
+local news article enough evidence. A ruling resting on fewer independent
+outlets than the corroboration threshold triggers another research round
+whatever it said, subject to the round limit and the budget.
+
+The pattern in both is the same, and it is the pattern the whole verification
+half of the system follows: the model supplies the judgement, and arithmetic
+supplies the check on it.
+
 ## Extending it
 
 A new tool is a class with a name, a description, a JSON Schema and a `call`,
@@ -152,5 +176,8 @@ decorated with `@tool`. A new role is a module in `mas/agents/` with a system
 prompt and a tool list. A new workflow is a `Graph` with nodes and declared
 edges, registered in `mas/workflows/`.
 
-The kernel needs no changes for any of those, which is the test of whether the
-split described at the top is real.
+The kernel needs no changes for any of those, and `claim_check` is the evidence
+rather than the claim: it was added after the kernel was finished, reuses the
+Planner, the Researcher, the Fact Checker and the Writer unchanged, and
+required no edit to the orchestrator, the blackboard, the budget guard or the
+UI's graph drawing.
