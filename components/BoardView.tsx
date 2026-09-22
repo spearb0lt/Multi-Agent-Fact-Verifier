@@ -171,8 +171,12 @@ export default function BoardView({ board, evidence }: Props) {
                   <span className="text-[15px] font-semibold">
                     {String(ruling.verdict || "").replace(/_/g, " ")}
                   </span>
-                  <span className="chip" style={{ color: "var(--muted)" }}>
-                    {ruling.confidence} confidence
+                  <span
+                    className="chip"
+                    style={{ color: "var(--muted)" }}
+                    title="Confidence in this ruling, not in the claim being true"
+                  >
+                    {ruling.confidence} confidence in this ruling
                   </span>
                   <span
                     className="chip"

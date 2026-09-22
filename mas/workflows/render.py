@@ -50,7 +50,11 @@ def _ruling_section(ctx: Any) -> str:
         f"of it.",
         "",
         f"- Verdict: {str(ruling.get('verdict', 'unknown')).replace('_', ' ')}",
-        f"- Confidence: {ruling.get('confidence', 'unknown')}",
+        # Named this way because "unverifiable" beside a bare "high confidence"
+        # reads as high confidence that the claim is true. It is confidence in
+        # the ruling, which for an unverifiable claim means confidence that the
+        # evidence does not settle it.
+        f"- Confidence in this ruling: {ruling.get('confidence', 'unknown')}",
         f"- Independent outlets behind the ruling: {len(domains)}"
         + (f" ({', '.join(domains)})" if domains else ""),
         f"- Research rounds: {ruling.get('round', 1)}",
