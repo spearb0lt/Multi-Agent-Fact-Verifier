@@ -444,8 +444,9 @@ def test_a_run_whose_worker_died_is_reclaimed():
 
     # Backdate the heartbeat past the lease, which is what a killed process
     # leaves behind.
-    from mas.core.util import to_iso, utcnow
     from datetime import timedelta
+
+    from mas.core.util import to_iso, utcnow
 
     store.update_run(
         key,
