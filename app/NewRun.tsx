@@ -38,6 +38,7 @@ export default function NewRun({ config, onStarted }: Props) {
   const [rounds, setRounds] = useState(config.defaults.max_research_rounds);
   const [revisions, setRevisions] = useState(config.defaults.max_revisions);
   const [concurrency, setConcurrency] = useState(config.defaults.agent_concurrency);
+  const [approvePlan, setApprovePlan] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -67,10 +68,11 @@ export default function NewRun({ config, onStarted }: Props) {
         max_research_rounds: rounds,
         max_revisions: revisions,
         agent_concurrency: concurrency,
+        approve_plan: approvePlan,
         start: true,
       });
       onStarted?.();
-      router.push(`/runs/${created.run_key}`);
+      router.push(`/run?key=${created.run_key}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -167,10 +169,18 @@ export default function NewRun({ config, onStarted }: Props) {
         </label>
       </div>
 
-      <div className="flex items-center gap-3 text-[11px]" style={{ color: "var(--muted)" }}>
+      <div className="flex items-center gap-3 text-[11px] flex-wrap" style={{ color: "var(--muted)" }}>
         <button type="button" className="chip" style={{ cursor: "pointer" }} onClick={() => setAdvanced((v) => !v)}>
           {advanced ? "Hide limits" : "Limits and loops"}
         </button>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={approvePlan}
+            onChange={(e) => setApprovePlan(e.target.checked)}
+          />
+          Show me the plan before spending on research
+        </label>
         <span>
           Stops at {maxSteps} steps, {Math.round(maxTokens / 1000)}k tokens, ${maxUsd}, or{" "}
           {Math.round(maxSeconds / 60)} minutes. A stop pauses and keeps everything.

@@ -79,7 +79,61 @@ graph = Graph(
 
 @graph.node("plan", agent="Planner", label="Plan", description="Decompose the brief")
 def plan_node(ctx: Any, task: Task) -> NodeResult:
+    # An optional gate before the expensive half of the run. Research is where
+    # nearly all of a run's tokens go, so someone watching their spend wants to
+    # see what is about to be researched before paying for it. Off by default,
+    # because a run nobody is watching should not sit waiting for an answer.
+    if ctx.config.get("approve_plan"):
+        answer = ctx.store.latest_answer(ctx.run_id, "plan")
+        if answer is None:
+            plan = planner.plan(ctx)
+            ctx.board.set("plan", plan)
+            questions = "\n".join(
+                f"{sub['id']}. {sub['question']}" for sub in plan["subquestions"]
+            )
+            return NodeResult(
+                output={"awaiting": "plan approval"},
+                action="asked for approval",
+                artifacts=[
+                    planner.artifact(
+                        ArtifactKind.PLAN.value,
+                        "plan-proposed",
+                        title=plan["title"],
+                        content=plan,
+                    )
+                ],
+                await_approval={
+                    "kind": "plan",
+                    "question": (
+                        f"Research these {len(plan['subquestions'])} questions?\n\n{questions}"
+                    ),
+                    "options": ["approve", "cancel"],
+                    "payload": {"plan": plan},
+                },
+            )
+        if str(answer.get("answer", "")).lower().startswith("cancel"):
+            ctx.bus.log("The plan was rejected, so the run stops here.", level="warning")
+            return NodeResult(output={"cancelled": True}, action="plan rejected", done=True)
+
+        # The approved plan is the one that runs. Re-planning here would spend
+        # another call and could produce a different set of questions from the
+        # ones the operator actually said yes to.
+        approved = dict((answer.get("payload") or {}).get("plan") or ctx.board.plan)
+        if approved.get("subquestions"):
+            if answer.get("note"):
+                ctx.bus.log(
+                    f"Carrying the approver's note into the run: {answer['note']}",
+                    level="info",
+                )
+                approved["angle"] = f"{approved.get('angle', '')} {answer['note']}".strip()
+            return _dispatch_plan(ctx, approved)
+
     plan = planner.plan(ctx)
+    return _dispatch_plan(ctx, plan)
+
+
+def _dispatch_plan(ctx: Any, plan: dict[str, Any]) -> NodeResult:
+    """Put a plan on the board and fan the researchers out against it."""
     round_number = int(ctx.board.get("research_rounds", 0)) + 1
 
     ctx.board.update(

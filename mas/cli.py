@@ -316,6 +316,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             ["Planner", "Researcher", "Analyst", "FactChecker", "Supervisor",
              "Writer", "Editor", "Critic"], "cheap"
         )
+    if args.approve_plan:
+        config["approve_plan"] = True
 
     run_key = store.create_run(
         brief=args.brief,
@@ -626,6 +628,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--concurrency", type=int, default=None)
     p.add_argument("--all-strong", action="store_true", help="use the strong model for every role")
     p.add_argument("--all-cheap", action="store_true", help="use the cheap model for every role")
+    p.add_argument(
+        "--approve-plan", action="store_true",
+        help="stop after planning and wait for you to approve, before spending on research",
+    )
     add_budget_flags(p)
     add_watch_flags(p)
     p.set_defaults(func=cmd_run)

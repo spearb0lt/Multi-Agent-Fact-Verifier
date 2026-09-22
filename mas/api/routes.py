@@ -171,6 +171,8 @@ def create_run(payload: RunIn, request: Request) -> dict[str, Any]:
             config[name] = value
     if payload.role_tiers:
         config["role_tiers"] = payload.role_tiers
+    if payload.approve_plan:
+        config["approve_plan"] = True
 
     run_key = store.create_run(
         brief=payload.brief.strip(),

@@ -61,6 +61,9 @@ class RunIn(BaseModel):
     agent_concurrency: int | None = Field(default=None, ge=1, le=8)
     role_tiers: dict[str, str] | None = None
     allow_degrade: bool = True
+    # Park the run after planning until someone approves, before research
+    # spends most of the run's tokens.
+    approve_plan: bool = False
     # Start executing straight away. False creates the run and leaves it
     # pending, which is what a caller wants when queueing work for later.
     start: bool = True
