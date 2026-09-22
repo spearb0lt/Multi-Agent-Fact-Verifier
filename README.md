@@ -10,7 +10,6 @@ Claims that fail verification never reach the report. The ones that do carry the
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Providers](https://img.shields.io/badge/LLM%20providers-19-2f6f4e)](#every-model-provider)
-[![Tests](https://img.shields.io/badge/tests-68%20passing-2f6f4e)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 </div>
