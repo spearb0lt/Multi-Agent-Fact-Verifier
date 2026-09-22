@@ -36,12 +36,25 @@ DEV_ORIGINS = [
 
 
 def reclaim_orphaned_runs() -> int:
-    """Turn runs abandoned by a dead process back into resumable ones."""
+    """Turn runs abandoned by a dead process back into resumable ones.
+
+    Only runs whose lease has gone stale. A run marked running is not
+    necessarily orphaned: the CLI in another terminal holds a perfectly live
+    lease on one, and pausing it from here because this process happened to
+    start would stop work that was going fine. The heartbeat is what tells the
+    two apart, and it is why `claim_run` writes one.
+    """
     from ..kernel import store
     from ..kernel.contracts import RunStatus
 
     reclaimed = 0
     for run in store.list_runs(limit=200, status=RunStatus.RUNNING.value):
+        if not store.lease_is_stale(run):
+            log.info(
+                "run %s is running elsewhere with a live lease, leaving it alone",
+                run["run_key"],
+            )
+            continue
         store.release_run(
             str(run["run_key"]),
             status=RunStatus.PAUSED,
@@ -52,7 +65,7 @@ def reclaim_orphaned_runs() -> int:
         )
         reclaimed += 1
     if reclaimed:
-        log.warning("reclaimed %s run(s) left running by a previous process", reclaimed)
+        log.warning("reclaimed %s run(s) left running by a dead process", reclaimed)
     return reclaimed
 
 

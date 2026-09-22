@@ -163,13 +163,24 @@ def heartbeat(run_key: str, *, phase: str = "", spent: Spend | None = None) -> N
     update_run(run_key, **fields)
 
 
-def _lease_is_stale(row: dict[str, Any]) -> bool:
+def lease_is_stale(row: dict[str, Any]) -> bool:
+    """Whether the worker holding this run has stopped reporting in.
+
+    The difference between a run executing in another process and one whose
+    process died is exactly this, and getting it wrong in either direction is
+    bad: assume alive and an orphan sits there forever, assume dead and a
+    healthy run is stopped out from under a worker that was doing fine.
+    """
     from ..core.util import parse_datetime
 
     beat = parse_datetime(row.get("heartbeat_at"))
     if beat is None:
         return True
     return (utcnow() - beat).total_seconds() > STALE_LEASE_SECONDS
+
+
+# Kept for the internal call sites that read better with the private spelling.
+_lease_is_stale = lease_is_stale
 
 
 def claim_run(run_key: str) -> bool:

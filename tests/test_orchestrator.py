@@ -411,3 +411,50 @@ def test_a_partly_finished_fan_out_keeps_the_branches_that_completed():
     assert second["status"] in {RunStatus.COMPLETED.value, RunStatus.PAUSED.value}
     final = store.latest_checkpoint(run_id)["state"]
     assert sorted(final["done_branches"]) == [0, 1, 2]
+
+
+def test_a_live_run_in_another_process_is_not_reclaimed():
+    """Starting the API must not stop a run the CLI is happily executing.
+
+    `reclaim_orphaned_runs` exists to rescue runs whose worker died. Written
+    without the staleness check it also paused a run that was executing fine in
+    another process, which looked exactly like the run mysteriously stopping
+    for no reason.
+    """
+    from mas.api.app import reclaim_orphaned_runs
+
+    build_graph("wf_reclaim")
+    key = make_run("wf_reclaim")
+
+    # A live worker: claimed, and heartbeating now.
+    assert store.claim_run(key) is True
+    store.heartbeat(key, phase="plan")
+
+    assert reclaim_orphaned_runs() == 0
+    assert store.get_run(key)["status"] == RunStatus.RUNNING.value
+
+
+def test_a_run_whose_worker_died_is_reclaimed():
+    from mas.api.app import reclaim_orphaned_runs
+    from mas.kernel import store as store_module
+
+    build_graph("wf_orphan")
+    key = make_run("wf_orphan")
+    store.claim_run(key)
+
+    # Backdate the heartbeat past the lease, which is what a killed process
+    # leaves behind.
+    from mas.core.util import to_iso, utcnow
+    from datetime import timedelta
+
+    store.update_run(
+        key,
+        heartbeat_at=to_iso(utcnow() - timedelta(seconds=store_module.STALE_LEASE_SECONDS + 30)),
+    )
+
+    assert reclaim_orphaned_runs() == 1
+    run = store.get_run(key)
+    assert run["status"] == RunStatus.PAUSED.value
+    assert "process executing this run stopped" in run["pause_reason"]
+    # And it is resumable, with nothing lost.
+    assert RunStatus(run["status"]).resumable
