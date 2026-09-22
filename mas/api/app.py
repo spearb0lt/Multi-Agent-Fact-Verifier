@@ -2,10 +2,13 @@
 
 Two behaviours here are worth more than they look.
 
-On start up, any run left in the `running` state is reclaimed. A process that
-was killed mid run leaves its lease behind, and without this the run would sit
-there apparently executing with nobody executing it. Reclaiming it turns that
-into a paused run somebody can resume.
+Orphaned runs are reclaimed, on start up and then periodically. A process
+killed mid run leaves its lease behind, and without this the run sits there
+apparently executing with nobody executing it. The sweep has to keep running
+rather than happen once, because a hosted free tier suspends an idle service
+without caring that a run is in progress and wakes it again the moment somebody
+visits, at which point the dead worker's heartbeat is still fresh enough to
+look alive.
 
 On shutdown, every executing run is asked to pause. The checkpoint discipline
 means an abrupt exit loses at most the step in flight, but asking first usually
@@ -15,6 +18,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import threading
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -23,10 +27,15 @@ from fastapi.responses import JSONResponse
 
 from ..core import settings
 from ..core.llm import keyring
+from . import worker
 from .routes import router
 from .worker import shutdown as shutdown_worker
 
 log = logging.getLogger(__name__)
+
+# How often to look for runs whose worker died. Shorter than the lease
+# itself, so an orphan is picked up soon after it becomes one.
+SWEEP_SECONDS = settings.env_int("ORPHAN_SWEEP_SECONDS", 30)
 
 DEV_ORIGINS = [
     "http://localhost:3000",
@@ -49,14 +58,14 @@ def reclaim_orphaned_runs() -> int:
 
     reclaimed = 0
     for run in store.list_runs(limit=200, status=RunStatus.RUNNING.value):
+        key = str(run["run_key"])
+        if worker.is_running(key):
+            continue
         if not store.lease_is_stale(run):
-            log.info(
-                "run %s is running elsewhere with a live lease, leaving it alone",
-                run["run_key"],
-            )
+            log.info("run %s has a live lease elsewhere, leaving it alone", key)
             continue
         store.release_run(
-            str(run["run_key"]),
+            key,
             status=RunStatus.PAUSED,
             reason=(
                 "The process executing this run stopped. Everything it had gathered "
@@ -69,6 +78,28 @@ def reclaim_orphaned_runs() -> int:
     return reclaimed
 
 
+def _sweep_orphans(stop: threading.Event) -> None:
+    """Keep looking for orphaned runs, not just at start up.
+
+    Reclaiming only on start up leaves a hole exactly where a hosted free tier
+    puts one. A platform that suspends an idle service does not care that a run
+    is executing, because a background run generates no inbound traffic; and it
+    wakes the service again the moment somebody visits, which can be seconds
+    later. At that point the dead worker's heartbeat is still fresh, the lease
+    reads as live, start up correctly declines to touch it, and the run sits
+    marked running with nobody running it until the next restart.
+
+    A periodic sweep closes that: whenever the lease does go stale, whichever
+    process is up notices within a sweep interval and turns the run back into
+    something resumable.
+    """
+    while not stop.wait(SWEEP_SECONDS):
+        try:
+            reclaim_orphaned_runs()
+        except Exception:
+            log.exception("orphan sweep failed")
+
+
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     from ..core.db import get_db
@@ -79,7 +110,16 @@ async def lifespan(app: FastAPI):
     from .. import tools, workflows  # noqa: F401
 
     reclaim_orphaned_runs()
+
+    stop = threading.Event()
+    sweeper = threading.Thread(
+        target=_sweep_orphans, args=(stop,), name="mas-orphan-sweep", daemon=True
+    )
+    sweeper.start()
+
     yield
+
+    stop.set()
     shutdown_worker(wait=False)
 
 

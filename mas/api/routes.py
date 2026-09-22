@@ -23,11 +23,11 @@ from ..core.runtime import current as runtime
 from ..kernel import graph as graph_module
 from ..kernel import orchestrator, store
 from ..kernel.bus import hub
-from ..kernel.contracts import Budget, RunStatus
+from ..kernel.contracts import RunStatus
 from ..kernel.pacer import pacer
 from ..kernel.tool import registry as tool_registry
 from . import worker
-from .schemas import AnswerIn, KeysIn, ResumeIn, RunIn
+from .schemas import AnswerIn, BudgetIn, KeysIn, ResumeIn, RunIn
 
 router = APIRouter(prefix="/api")
 
@@ -181,7 +181,12 @@ def create_run(payload: RunIn, request: Request) -> dict[str, Any]:
         model=model,
         cheap_model=chosen.cheap_model(),
         config=config,
-        budget=(payload.budget or None).merged() if payload.budget else Budget(),
+        # A request that names no ceilings gets the deployment's, not the
+        # dataclass defaults. Those two agree until a deployment sets one of
+        # the environment variables, which is the only situation that matters:
+        # a host told to cap runs at 780 seconds was being ignored entirely for
+        # anything started from the web UI.
+        budget=(payload.budget or BudgetIn()).merged(),
     )
 
     if payload.credentials:

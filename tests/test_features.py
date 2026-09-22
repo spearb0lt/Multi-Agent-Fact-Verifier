@@ -286,3 +286,54 @@ def test_every_node_agent_has_a_model_tier():
         for node in g.nodes.values():
             if node.agent:
                 assert node.agent in ROLE_TIERS, f"{node.agent} has no declared tier"
+
+
+# ------------------------------------------------------- deployment ceilings
+
+
+def test_a_run_started_without_a_budget_gets_the_deployment_ceilings(monkeypatch):
+    """The environment is what a host configures, so it has to be what binds.
+
+    This hid for a long time because the dataclass defaults and the settings
+    defaults are the same numbers. They only diverge when a deployment actually
+    sets one of the variables, which is the one case that matters: a blueprint
+    capping runs at 780 seconds because the platform stops an idle instance at
+    900 was being discarded for everything started from the web UI, and the
+    agreement between the two sets of defaults made it look correct.
+    """
+    from mas.api.schemas import BudgetIn
+    from mas.core import settings
+
+    monkeypatch.setattr(settings, "MAX_RUN_SECONDS", 780)
+    monkeypatch.setattr(settings, "MAX_RUN_TOKENS", 111_000)
+    monkeypatch.setattr(settings, "MAX_TOOL_CALLS", 17)
+
+    budget = BudgetIn().merged()
+    assert budget.max_seconds == 780
+    assert budget.max_tokens == 111_000
+    assert budget.max_tool_calls == 17
+
+
+def test_an_explicit_ceiling_still_wins_over_the_deployment(monkeypatch):
+    from mas.api.schemas import BudgetIn
+    from mas.core import settings
+
+    monkeypatch.setattr(settings, "MAX_RUN_SECONDS", 780)
+    budget = BudgetIn(max_seconds=120).merged()
+    assert budget.max_seconds == 120
+    # And the ceilings it did not name still come from the deployment.
+    assert budget.max_tokens == settings.MAX_RUN_TOKENS
+
+
+def test_the_create_route_does_not_bypass_the_deployment_ceilings():
+    """A guard on the specific line that was wrong.
+
+    `Budget()` here rather than the merged defaults is the whole bug, and it is
+    an easy thing to reintroduce because it reads perfectly well.
+    """
+    import inspect
+
+    from mas.api import routes
+
+    source = inspect.getsource(routes.create_run)
+    assert "BudgetIn()" in source, "the create route must fall back to the deployment budget"

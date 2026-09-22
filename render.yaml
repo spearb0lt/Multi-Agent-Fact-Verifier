@@ -1,39 +1,71 @@
 # Render blueprint.
 #
-# A web service with a disk, not a static site plus a function. That is the
-# whole point: an agent run takes minutes and must survive between requests, so
-# it needs a process that stays alive and a filesystem that persists. The free
-# instance type sleeps when idle, which pauses a running agent rather than
-# losing it, and it resumes from its last checkpoint on the next request.
+# A web service, not a static site plus a function. An agent run takes minutes
+# and must survive between requests, so it needs a process that stays alive and
+# storage that persists.
 #
-# Vercel is deliberately not a target. Its functions are killed at a fixed
-# deadline and its filesystem is ephemeral, so a run would be cut off part way
-# through with nowhere to write the checkpoint that would let it continue.
+# Read this before deploying, because Render's free tier has three properties
+# that decide how this has to be configured:
+#
+# 1. Persistent disks are available on PAID instance types only. A free service
+#    cannot have one, so the `disk:` block below is commented out and belongs
+#    with the paid plan, not this one.
+# 2. A free service's filesystem is ephemeral. Anything written locally is lost
+#    on redeploy and on spin-down, so SQLite on a free instance would lose every
+#    run. DATABASE_URL is therefore required here rather than optional.
+# 3. A free service spins down after 15 minutes without traffic, and takes about
+#    a minute to wake. A run that is executing when that happens is left marked
+#    running with a stale lease; on the next start the app reclaims it as paused
+#    and it resumes from its last checkpoint. That is the designed behaviour and
+#    it only works because the checkpoints are in the database rather than on
+#    the disk that just disappeared.
+#
+# So: free plan plus an external Postgres, or a paid plan plus a disk. Both are
+# below. Do not use the free plan with SQLite.
+
+databases:
+  # Render's own free Postgres EXPIRES 30 DAYS after creation, with a 14 day
+  # grace period. That is fine for trying this out and wrong for anything you
+  # want to keep, so for a long lived deployment point DATABASE_URL at a
+  # provider whose free tier does not expire, such as Neon or Supabase, and
+  # delete this block.
+  - name: agentic-db
+    plan: free
+    databaseName: agentic
+    user: agentic
 
 services:
   - type: web
-    name: multi-agentic
+    name: multi-agent-fact-verifier
     runtime: docker
     dockerfilePath: ./Dockerfile
     plan: free
     healthCheckPath: /api/health
-    disk:
-      name: agentic-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
-      - key: DATA_DIR
-        value: /data
-      - key: SQLITE_PATH
-        value: /data/agentic.db
-      # Free instances are small. Two runs at once on a free tier mostly
-      # produces two runs being rate limited.
+      # The whole reason a database is required on the free plan: a run's
+      # checkpoints are what make it resumable, and the local filesystem does
+      # not survive a spin-down.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: agentic-db
+          property: connectionString
+
+      # One run at a time on a free instance. It has half a gigabyte of memory
+      # and the free model tiers are rate limited anyway, so two concurrent
+      # runs mostly produce two runs being throttled.
       - key: MAX_CONCURRENT_RUNS
         value: "1"
       - key: AGENT_CONCURRENCY
         value: "2"
-      # Set these in the Render dashboard rather than here. Anything marked
-      # sync:false is prompted for once and never written to the repository.
+
+      # A free instance is stopped at 15 minutes of idleness, so a ceiling
+      # longer than that mostly buys a run that gets suspended rather than one
+      # that finishes. It will resume, but finishing inside one wake is better.
+      - key: MAX_RUN_SECONDS
+        value: "780"
+
+      # Set these in the Render dashboard. Anything marked sync:false is asked
+      # for once on deploy and never written into this file.
       - key: GOOGLE_API_KEY
         sync: false
       - key: GROQ_API_KEY
@@ -48,7 +80,33 @@ services:
         sync: false
       - key: SERPAPI_KEY
         sync: false
-      # Strongly recommended on anything public: without it, strangers spend
-      # your quota.
+
+      # Strongly recommended on anything public. Without it, strangers spend
+      # your model quota. With it the browser falls back to polling for the
+      # live trace, because an event stream cannot carry a header.
       - key: APP_PASSWORD
         sync: false
+
+# ---------------------------------------------------------------------------
+# The paid variant. A disk is the simpler arrangement when you are paying: the
+# service keeps SQLite on durable storage, no external database is involved,
+# and nothing spins down. Replace the service above with this, and delete the
+# `databases:` block and the DATABASE_URL entry.
+#
+# services:
+#   - type: web
+#     name: multi-agent-fact-verifier
+#     runtime: docker
+#     dockerfilePath: ./Dockerfile
+#     plan: starter
+#     healthCheckPath: /api/health
+#     disk:
+#       name: agentic-data
+#       mountPath: /data
+#       sizeGB: 1
+#     envVars:
+#       - key: DATA_DIR
+#         value: /data
+#       - key: SQLITE_PATH
+#         value: /data/agentic.db
+#       ... plus the same keys as above

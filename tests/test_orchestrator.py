@@ -459,3 +459,177 @@ def test_a_run_whose_worker_died_is_reclaimed():
     assert "process executing this run stopped" in run["pause_reason"]
     # And it is resumable, with nothing lost.
     assert RunStatus(run["status"]).resumable
+
+
+def test_a_run_this_process_is_executing_is_never_reclaimed(monkeypatch):
+    """The lease is not the only evidence of life, and it is the weaker one.
+
+    A step can take longer than the lease without anything being wrong: one
+    reason and act turn against a slow model, or a pacer sleeping out a token
+    window, both hold the worker without touching the heartbeat. Reclaiming on
+    the strength of a stale heartbeat alone would then pause a run from under
+    the thread still executing it, in the same process. This process knows
+    exactly which runs it is executing, so it asks itself first.
+    """
+    from mas.api import worker
+    from mas.api.app import reclaim_orphaned_runs
+    from mas.kernel import store as store_module
+
+    build_graph("wf_busy")
+    key = make_run("wf_busy")
+    store.claim_run(key)
+
+    from datetime import timedelta
+
+    from mas.core.util import to_iso, utcnow
+
+    store.update_run(
+        key,
+        heartbeat_at=to_iso(utcnow() - timedelta(seconds=store_module.STALE_LEASE_SECONDS + 30)),
+    )
+
+    monkeypatch.setattr(worker, "is_running", lambda run_key: run_key == key)
+
+    assert reclaim_orphaned_runs() == 0
+    assert store.get_run(key)["status"] == RunStatus.RUNNING.value
+
+
+def test_orphans_are_swept_up_long_after_start_up():
+    """Reclaiming once at start up is not enough on a service that sleeps.
+
+    A free tier suspends an idle service without caring that a run is in
+    progress, and wakes it again the moment somebody visits. If that visit
+    comes sooner than the lease timeout, start up finds a heartbeat that is
+    still fresh, correctly declines to touch the run, and the run stays marked
+    running with nobody running it until some later restart happens to land in
+    the right window. This was a real hole, found by killing a container mid
+    run and restarting it immediately.
+
+    The sweep is what closes it: the orphan here is created after the sweeper
+    is already going, which is precisely the case start up cannot catch.
+    """
+    import threading
+
+    from mas.api import app as api_app  # the module, now that the name is free
+    from mas.kernel import store as store_module
+
+    build_graph("wf_swept")
+    key = make_run("wf_swept")
+    store.claim_run(key)
+
+    stop = threading.Event()
+    reclaimed = threading.Event()
+
+    # A sweep interval short enough to test, rather than waiting out the real one.
+    original = api_app.SWEEP_SECONDS
+    api_app.SWEEP_SECONDS = 0.05
+    sweeper = threading.Thread(target=api_app._sweep_orphans, args=(stop,), daemon=True)
+    sweeper.start()
+    try:
+        # It leaves the live run alone for as long as the lease looks live.
+        assert not reclaimed.wait(0.3)
+        assert store.get_run(key)["status"] == RunStatus.RUNNING.value
+
+        # Now the worker dies: nothing changes except that the heartbeat stops.
+        from datetime import timedelta
+
+        from mas.core.util import to_iso, utcnow
+
+        store.update_run(
+            key,
+            heartbeat_at=to_iso(
+                utcnow() - timedelta(seconds=store_module.STALE_LEASE_SECONDS + 30)
+            ),
+        )
+
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            if store.get_run(key)["status"] == RunStatus.PAUSED.value:
+                break
+            time.sleep(0.05)
+
+        run = store.get_run(key)
+        assert run["status"] == RunStatus.PAUSED.value, "the sweep never picked the orphan up"
+        assert RunStatus(run["status"]).resumable
+    finally:
+        stop.set()
+        api_app.SWEEP_SECONDS = original
+        sweeper.join(timeout=2)
+
+    assert not sweeper.is_alive(), "the sweeper must stop when the app shuts down"
+
+
+def test_the_lease_is_renewed_while_a_long_step_is_running(monkeypatch):
+    """A step that outlasts the lease must not make the run look abandoned.
+
+    One step is an entire agent's reason and act loop, so minutes is ordinary
+    and the lease is ninety seconds. Heartbeating only between steps therefore
+    left a healthy run looking dead for most of its life, and the only thing
+    hiding it was that the process doing the reclaiming was usually the same
+    one doing the work. Across processes, which is the case the lease exists
+    for, it would have paused a run that was going fine.
+    """
+    from mas.api.app import reclaim_orphaned_runs
+    from mas.kernel import orchestrator as orch
+    from mas.kernel import store as store_module
+
+    build_graph("wf_slow")
+    key = make_run("wf_slow")
+    store.claim_run(key)
+
+    # Backdate the heartbeat to what a step longer than the lease leaves
+    # behind, which is what the run looked like before this existed.
+    from datetime import timedelta
+
+    from mas.core.util import to_iso, utcnow
+
+    store.update_run(
+        key,
+        heartbeat_at=to_iso(utcnow() - timedelta(seconds=store_module.STALE_LEASE_SECONDS + 30)),
+    )
+    assert store_module.lease_is_stale(store.get_run(key)) is True
+
+    monkeypatch.setattr(orch, "HEARTBEAT_SECONDS", 0.05)
+    keep_alive = orch._KeepAlive(key)
+    keep_alive.start()
+    try:
+        deadline = time.time() + 3
+        while time.time() < deadline:
+            if not store_module.lease_is_stale(store.get_run(key)):
+                break
+            time.sleep(0.05)
+        assert store_module.lease_is_stale(store.get_run(key)) is False, (
+            "the keep alive never renewed the lease"
+        )
+
+        # And with the lease renewed, a sweep in another process leaves it be.
+        assert reclaim_orphaned_runs() == 0
+        assert store.get_run(key)["status"] == RunStatus.RUNNING.value
+    finally:
+        keep_alive.stop()
+
+    assert keep_alive._thread is None, "the keep alive must not outlive the run"
+
+
+def test_the_keep_alive_writes_only_the_heartbeat():
+    """It must not write phase or spend, which belong to the running step.
+
+    Both are written by the step itself at its own boundaries. Renewing them
+    from a timer would put whatever this thread last saw back over the top of
+    them, which is how a run ends up reporting a phase it left minutes ago.
+    """
+    from mas.kernel import orchestrator as orch
+
+    build_graph("wf_fields")
+    key = make_run("wf_fields")
+    store.claim_run(key)
+    store.heartbeat(key, phase="research")
+
+    before = store.get_run(key)
+    orch._KeepAlive(key)  # constructing it must not touch anything
+    store.heartbeat(key)  # what the beat actually calls
+
+    after = store.get_run(key)
+    assert after["phase"] == before["phase"] == "research"
+    assert after["spent"] == before["spent"]
+    assert after["heartbeat_at"] >= before["heartbeat_at"]

@@ -23,11 +23,13 @@ persistence, which is a far worse trade.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from ..core import settings
 from ..core.util import truncate
 from . import graph as graph_module
 from . import store
@@ -161,6 +163,56 @@ def _execute_batch(
     return outcome
 
 
+# How often the worker says it is still here. Well under the lease, because
+# the lease going stale is what tells another process this run was abandoned.
+HEARTBEAT_SECONDS = settings.env_int("HEARTBEAT_SECONDS", 20)
+
+
+class _KeepAlive:
+    """Renew the lease while a step is in flight, not only between steps.
+
+    Heartbeating at step boundaries alone quietly breaks the one thing the
+    lease is for. A single step is a whole agent's reason and act loop: several
+    model calls, page fetches, and however long the pacer sleeps to stay inside
+    a token allowance. Minutes is ordinary. So a perfectly healthy run spends
+    most of its life looking abandoned, and anything that reclaims stale leases
+    will eventually pause a run out from under the worker still executing it.
+
+    The in process guard catches that here but cannot see across processes,
+    which is exactly where it matters: the CLI running a long research step in
+    one terminal, the API sweeping for orphans in another. Renewing on a timer
+    makes a stale lease mean what it says.
+    """
+
+    def __init__(self, run_key: str) -> None:
+        self._run_key = run_key
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        if HEARTBEAT_SECONDS > 0:
+            self._thread = threading.Thread(
+                target=self._beat, name=f"mas-lease-{self._run_key}", daemon=True
+            )
+            self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+            self._thread = None
+
+    def _beat(self) -> None:
+        while not self._stop.wait(HEARTBEAT_SECONDS):
+            try:
+                # No phase and no spend: those belong to the step that is
+                # running and would be written stale from out here.
+                store.heartbeat(self._run_key)
+            except Exception:
+                # A blip reaching the database is not a reason to stop a run.
+                log.debug("lease heartbeat failed for %s", self._run_key, exc_info=True)
+
+
 def run(run_key: str, *, max_steps: int = 0) -> Outcome:
     """Execute or continue a run until it finishes, stops or is told to stop.
 
@@ -234,6 +286,8 @@ def run(run_key: str, *, max_steps: int = 0) -> Outcome:
     reason = ""
     error_text = ""
 
+    keep_alive = _KeepAlive(run_key)
+    keep_alive.start()
     try:
         while queue:
             ctx.check_control(force=True)
@@ -474,6 +528,11 @@ def run(run_key: str, *, max_steps: int = 0) -> Outcome:
                 spent=guard.spent.to_dict(),
                 board=board.summary(),
             )
+
+    finally:
+        # Stop before the release, so the lease is not renewed after the run
+        # has let go of it.
+        keep_alive.stop()
 
     guard.sync_seconds()
     store.release_run(

@@ -151,13 +151,27 @@ Built to run on free tiers, so the accounting is not an afterthought.
 |---|---|---|
 | `--max-steps` | 120 | runaway graphs |
 | `--max-tokens` | 400,000 | the usual way a budget goes |
-| `--max-usd` | 0.50 | paid providers only; free tiers price at zero |
+| `--max-usd` | 0.50 | a paid provider quietly getting expensive |
 | `--max-seconds` | 1800 | a run that has stalled |
 | `--max-tool-calls` | 80 | a researcher that will not stop searching |
 
 Below the ceiling it degrades rather than failing: past 70 percent the strong roles drop to the cheap model and the Planner asks fewer questions, so you get a smaller finished report instead of a larger unfinished one.
 
-**Typical cost on free tiers:** a claim check runs about 90 seconds and 30k tokens. A full report runs 3 to 5 minutes and 80 to 120k tokens. On Gemini, Groq or Cloudflare free tiers that is $0.00.
+The dollar figure is an estimate at the provider's published list price, which
+is charged whether or not the account is on a free tier. That is deliberate: a
+model with no published price reports as unpriced rather than as free, because
+a zero meaning "nobody entered a number" reads exactly like a zero meaning
+"this cost nothing". On a free tier the number is therefore what the work would
+have cost, and the actual bill is nothing.
+
+**Measured, across seven completed runs on Cloudflare `llama-3.3-70b`:** a claim
+check took 79 to 98 seconds and 33k to 62k tokens. A full report took 3.5 to 5
+minutes and 77k to 92k tokens. Neither was billed.
+
+Wall clock is set by the provider's tokens per minute allowance far more than by
+the work. The same claim check on Groq, whose small model tier allows 7,000
+tokens a minute, spends most of its time in the pacer rather than in the model,
+so budget by tokens and treat the clock as a property of the provider you chose.
 
 ## Every model provider
 
@@ -271,10 +285,24 @@ The Python process serves the API and the built UI, so there is one thing to dep
 | Target | How |
 |---|---|
 | **Docker** | `docker compose up --build`. The image is about 800 MB, most of it onnxruntime and the bundled encoder |
-| **Render** | The included `render.yaml` creates a web service with a 1 GB disk |
+| **Render** | The included `render.yaml`. Free plan plus a Postgres, or a paid plan plus a disk — read the note below before picking |
 | **Oracle Cloud, any VM, a Pi** | `pip install -r requirements.txt && python -m mas.main` |
 
-The disk matters: checkpoints are what make runs resumable.
+Wherever it runs, the storage is the part that matters, because the checkpoints
+are what make a run resumable. On Render's free plan that rules out SQLite:
+persistent disks are a paid feature, and a free instance's filesystem is wiped
+on every redeploy and every spin-down. So the blueprint asks for a Postgres and
+points `DATABASE_URL` at it. The paid variant, with a disk and SQLite, is
+included in the same file as a commented block.
+
+A free instance is also stopped after 15 minutes without traffic, and a run in
+progress does not count as traffic. That is survivable rather than fatal: the
+process is killed between checkpoints, the run is left marked running with a
+lease nobody is renewing, and the service reclaims it as paused — on start up,
+and then every `ORPHAN_SWEEP_SECONDS` thereafter, which is what catches the
+case where the service wakes up again before the lease has even gone cold.
+Resuming continues from the last completed step. Verified by killing the
+container mid-run and bringing it back.
 
 **Vercel is not supported and the code is deliberately not shaped for it.** An agent run takes minutes and must survive between requests. A serverless function is killed at a fixed deadline and has an ephemeral filesystem, so the checkpoint that lets a run continue would have nowhere to live.
 
@@ -284,7 +312,7 @@ The disk matters: checkpoints are what make runs resumable.
 python -m pytest
 ```
 
-81 tests, and they spend nothing. They cover the kernel's guarantees (pause, resume, budget breach, lease exclusion, retries, approval gates, requeue of interrupted work), both tool-calling protocols, argument coercion, rate pacing, and the prose extraction that keeps a navigation menu from being stored as a source.
+83 tests, and they spend nothing. They cover the kernel's guarantees (pause, resume, budget breach, lease exclusion, orphan reclaim, retries, approval gates, requeue of interrupted work), both tool-calling protocols, argument coercion, rate pacing, and the prose extraction that keeps a navigation menu from being stored as a source.
 
 The same suite runs against Postgres, which is how the claim that the schema is
 portable gets checked rather than asserted:
