@@ -270,7 +270,7 @@ The Python process serves the API and the built UI, so there is one thing to dep
 
 | Target | How |
 |---|---|
-| **Docker** | `docker compose up --build` |
+| **Docker** | `docker compose up --build`. The image is about 800 MB, most of it onnxruntime and the bundled encoder |
 | **Render** | The included `render.yaml` creates a web service with a 1 GB disk |
 | **Oracle Cloud, any VM, a Pi** | `pip install -r requirements.txt && python -m mas.main` |
 
@@ -284,7 +284,15 @@ The disk matters: checkpoints are what make runs resumable.
 python -m pytest
 ```
 
-68 tests, and they spend nothing. They cover the kernel's guarantees (pause, resume, budget breach, lease exclusion, retries, approval gates, requeue of interrupted work), both tool-calling protocols, argument coercion, rate pacing, and the prose extraction that keeps a navigation menu from being stored as a source.
+81 tests, and they spend nothing. They cover the kernel's guarantees (pause, resume, budget breach, lease exclusion, retries, approval gates, requeue of interrupted work), both tool-calling protocols, argument coercion, rate pacing, and the prose extraction that keeps a navigation menu from being stored as a source.
+
+The same suite runs against Postgres, which is how the claim that the schema is
+portable gets checked rather than asserted:
+
+```bash
+docker run -d --name pg -p 55432:5432   -e POSTGRES_USER=agentic -e POSTGRES_PASSWORD=agentic -e POSTGRES_DB=agentic postgres:16-alpine
+MAS_TEST_POSTGRES=postgresql://agentic:agentic@127.0.0.1:55432/agentic python -m pytest
+```
 
 ## Layout
 

@@ -106,6 +106,12 @@ Run it. Type checks and builds did not catch any of the bugs listed above.
 - Backend: `python -m mas.cli doctor --model`, then a real run.
 - Tests: `python -m pytest`. They cover the kernel's guarantees, both tool
   calling protocols and argument coercion, all without spending a token.
+- Storage: the same suite runs against Postgres with `MAS_TEST_POSTGRES` set.
+  Both engines have to pass, because the schema is written once in a portable
+  dialect and only one of them is exercised by default.
+- The container: `docker build -t mafv . && docker run -p 8000:8000 mafv`, then
+  check `/api/health` and load a page. A build that succeeds proves nothing
+  about whether the image serves anything.
 - A real run: `python -m mas.cli run "..." --depth quick --provider <one with quota>`.
 - Frontend: load the pages in a browser and check the console, not just
   `npm run build`. The agent graph in particular has been wrong in ways that

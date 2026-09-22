@@ -22,11 +22,37 @@ os.environ["IGNORE_DOTENV"] = "1"
 os.environ["DATABASE_URL"] = ""
 
 
+# Point this at a Postgres instance to run the whole suite against it instead
+# of SQLite. The schema is written once in a portable dialect and claimed to
+# work on both, and a claim nobody can run is not worth much:
+#
+#   docker run -d --name pg -p 55432:5432 -e POSTGRES_USER=agentic
+#       -e POSTGRES_PASSWORD=agentic -e POSTGRES_DB=agentic postgres:16-alpine
+#   MAS_TEST_POSTGRES=postgresql://agentic:agentic@127.0.0.1:55432/agentic pytest
+POSTGRES_URL = os.environ.get("MAS_TEST_POSTGRES", "").strip()
+
+
 @pytest.fixture(autouse=True)
 def fresh_database(tmp_path, monkeypatch):
     """One empty database per test, so nothing leaks between them."""
     from mas.core import settings
     from mas.core.db import engine
+
+    if POSTGRES_URL:
+        monkeypatch.setattr(settings, "DATABASE_URL", POSTGRES_URL)
+        engine.reset_db()
+        # Postgres is one shared database rather than a file per test, so it is
+        # emptied between tests instead of recreated.
+        db = engine.get_db()
+        db.ensure_schema()
+        with db.connect() as conn:
+            conn.execute(
+                "TRUNCATE runs, steps, events, messages, artifacts, checkpoints, "
+                "evidence, usage, tool_calls, memories, approvals RESTART IDENTITY CASCADE"
+            )
+        yield POSTGRES_URL
+        engine.reset_db()
+        return
 
     path = tmp_path / "run.db"
     monkeypatch.setattr(settings, "SQLITE_PATH", path)
