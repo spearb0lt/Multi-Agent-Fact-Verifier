@@ -1,0 +1,165 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* One place for the palette, so light and dark stay in step and a component
+   never reaches for a raw colour. Agent colours are assigned per role rather
+   than per position, so a role keeps its colour across every view. */
+:root {
+  color-scheme: light dark;
+  --bg: #fbfbfa;
+  --panel: #ffffff;
+  --panel-2: #f4f4f2;
+  --line: #e2e2dd;
+  --text: #1a1a18;
+  --muted: #6b6b63;
+  --faint: #9a9a91;
+  --accent: #2f6f4e;
+  --accent-soft: #e6f0ea;
+  --warn: #9a6b1f;
+  --warn-soft: #f7efdf;
+  --error: #a33a2c;
+  --error-soft: #f7e6e3;
+  --ok: #2f6f4e;
+  --on-accent: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14150f;
+    --panel: #1c1d17;
+    --panel-2: #23241d;
+    --line: #34362c;
+    --text: #eceade;
+    --muted: #9a9a8c;
+    --faint: #6d6e62;
+    --accent: #7fc09a;
+    --accent-soft: #1e3329;
+    --warn: #d6a75a;
+    --warn-soft: #33291a;
+    --error: #e08a7c;
+    --error-soft: #35211e;
+    --ok: #7fc09a;
+    --on-accent: #12190f;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #14150f;
+  --panel: #1c1d17;
+  --panel-2: #23241d;
+  --line: #34362c;
+  --text: #eceade;
+  --muted: #9a9a8c;
+  --faint: #6d6e62;
+  --accent: #7fc09a;
+  --accent-soft: #1e3329;
+  --warn: #d6a75a;
+  --warn-soft: #33291a;
+  --error: #e08a7c;
+  --error-soft: #35211e;
+  --ok: #7fc09a;
+  --on-accent: #12190f;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 0.7rem;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.btn:hover:not(:disabled) { border-color: var(--accent); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  /* A token rather than a literal, because the accent is dark in the light
+     theme and light in the dark one, so the text on it has to flip too. */
+  color: var(--on-accent);
+}
+
+.field {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0.5rem 0.65rem;
+  color: var(--text);
+  font-size: 0.88rem;
+}
+.field:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+/* The report reads as a document rather than as app chrome. */
+.prose-report { max-width: 44rem; line-height: 1.7; }
+.prose-report h1 { font-size: 1.7rem; font-weight: 650; margin: 0 0 1rem; line-height: 1.25; }
+.prose-report h2 { font-size: 1.12rem; font-weight: 620; margin: 2rem 0 0.6rem; }
+.prose-report h3 { font-size: 0.98rem; font-weight: 600; margin: 1.4rem 0 0.4rem; }
+.prose-report p { margin: 0 0 0.9rem; }
+.prose-report ul, .prose-report ol { margin: 0 0 1rem 1.1rem; }
+.prose-report li { margin: 0.25rem 0; }
+.prose-report a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.prose-report code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85em;
+  background: var(--panel-2);
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+}
+.cite {
+  font-size: 0.72em;
+  vertical-align: super;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.scroll-thin { scrollbar-width: thin; }
+.scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  70%  { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+.node-active { animation: pulse-ring 1.6s ease-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .node-active { animation: none; }
+}

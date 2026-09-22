@@ -1,0 +1,36 @@
+# Base dependencies. Everything here must also fit a slim container, so heavy
+# optional extras live in requirements-dev.txt instead.
+
+# Web layer
+fastapi>=0.115.6,<1.0
+uvicorn[standard]>=0.34.0,<1.0
+pydantic>=2.10.4,<3.0
+python-multipart>=0.0.20
+python-dotenv>=1.0.1
+
+# HTTP and parsing. feedparser is what makes keyless search possible: Google
+# News answers any query as RSS with no credential at all.
+requests>=2.32.3
+feedparser>=6.0.11
+trafilatura>=2.0.0
+
+# Vectors. numpy is required, not optional: evidence deduplication and the
+# corroboration check both go through it.
+numpy>=2.0.0
+
+# Local embeddings with no PyTorch. onnxruntime plus a quantised MiniLM is
+# about 160 MB unpacked, against roughly 1 GB for the torch stack, which is
+# what lets evidence be deduplicated with no API key.
+onnxruntime>=1.20.0
+tokenizers>=0.21.0
+
+# Model providers. Groq, OpenAI, OpenRouter, Together, DeepSeek, Mistral,
+# Cerebras, SambaNova, xAI, Fireworks, Perplexity, Ollama, LM Studio, llama.cpp
+# and vLLM all speak the OpenAI protocol, so one client library covers them all.
+openai>=1.59.6
+google-genai>=1.2.0
+anthropic>=0.45.0
+
+# Optional Postgres back end, used only when DATABASE_URL is set. Without it
+# the app falls back to SQLite on the local filesystem.
+psycopg[binary]>=3.2.3

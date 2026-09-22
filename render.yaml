@@ -1,0 +1,54 @@
+# Render blueprint.
+#
+# A web service with a disk, not a static site plus a function. That is the
+# whole point: an agent run takes minutes and must survive between requests, so
+# it needs a process that stays alive and a filesystem that persists. The free
+# instance type sleeps when idle, which pauses a running agent rather than
+# losing it, and it resumes from its last checkpoint on the next request.
+#
+# Vercel is deliberately not a target. Its functions are killed at a fixed
+# deadline and its filesystem is ephemeral, so a run would be cut off part way
+# through with nowhere to write the checkpoint that would let it continue.
+
+services:
+  - type: web
+    name: multi-agentic
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    disk:
+      name: agentic-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: SQLITE_PATH
+        value: /data/agentic.db
+      # Free instances are small. Two runs at once on a free tier mostly
+      # produces two runs being rate limited.
+      - key: MAX_CONCURRENT_RUNS
+        value: "1"
+      - key: AGENT_CONCURRENCY
+        value: "2"
+      # Set these in the Render dashboard rather than here. Anything marked
+      # sync:false is prompted for once and never written to the repository.
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: EXA_API_KEY
+        sync: false
+      - key: SERPAPI_KEY
+        sync: false
+      # Strongly recommended on anything public: without it, strangers spend
+      # your quota.
+      - key: APP_PASSWORD
+        sync: false

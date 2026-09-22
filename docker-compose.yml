@@ -1,0 +1,44 @@
+# Local Docker, closest thing to the hosted shape without paying for it.
+#
+#   docker compose up --build
+#
+# The named volume is not optional in spirit: a run's checkpoints are what make
+# it resumable, and without the volume they are lost every time the container
+# is replaced.
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /data
+      # Long agent runs need a durable disk. The volume below provides it.
+      SQLITE_PATH: /data/agentic.db
+    volumes:
+      - agentic-data:/data
+    restart: unless-stopped
+
+  # Postgres is optional and off by default. Start it with:
+  #   docker compose --profile postgres up --build
+  # then set DATABASE_URL=postgresql://agentic:agentic@postgres:5432/agentic
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_USER: agentic
+      POSTGRES_PASSWORD: agentic
+      POSTGRES_DB: agentic
+    volumes:
+      - agentic-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentic"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  agentic-data:
+  agentic-postgres:

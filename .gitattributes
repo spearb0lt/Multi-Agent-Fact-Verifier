@@ -1,0 +1,9 @@
+# Normalise line endings so a checkout on Windows and one on Linux produce the
+# same files. Without this the whole tree shows as modified after a clone on
+# the other platform.
+* text=auto eol=lf
+
+# The bundled model is binary and must never be touched by the text filters.
+*.onnx binary
+*.png binary
+*.ico binary

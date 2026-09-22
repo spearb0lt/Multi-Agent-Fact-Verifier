@@ -1,0 +1,37 @@
+[project]
+name = "multi-agentic"
+version = "1.0.0"
+description = "A supervised team of LLM agents that researches, verifies and writes, with a durable resumable run loop"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 96
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "PLC", "RUF"]
+ignore = [
+    "E501",
+    # FastAPI dependency defaults are function calls by design.
+    "B008",
+    # Imports inside functions are deliberate here, for two reasons that both
+    # matter: breaking the cycle between the kernel and the workflows built on
+    # it, and keeping an optional dependency optional until something actually
+    # needs it.
+    "PLC0415",
+    # A Tool's name, description and JSON Schema are class level declarations,
+    # which is the whole point of the Tool base class. Annotating each one as a
+    # ClassVar would add noise to every tool to satisfy a rule aimed at a
+    # different mistake.
+    "RUF012",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The vendored infrastructure is carried across as it was proven, so it is not
+# reformatted to this project's lint profile.
+"mas/core/**" = ["ALL"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]
